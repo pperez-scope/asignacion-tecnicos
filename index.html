@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Asignación de Técnicos — Scope</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#2E6B66" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<style>
+  :root{
+    --bg:#FAFAF8;
+    --surface:#FFFFFF;
+    --ink:#1F3B39;
+    --ink-soft:#5C7A77;
+    --line:#E3EEEC;
+    --navy:#2E6B66;
+    --navy-2:#245450;
+    --amber:#E65D2B;
+    --amber-ink:#FFFFFF;
+    --teal:#479F9A;
+    --salmon:#F0AB85;
+    --peach:#F8D5C3;
+    --mint:#E8F4F5;
+    --danger:#C1462F;
+    --ok:#3D7A4E;
+    --radius:10px;
+    --safe-top:env(safe-area-inset-top);
+    --safe-bottom:env(safe-area-inset-bottom);
+    --font-display:'Barlow Condensed',system-ui,sans-serif;
+    --font-body:'Inter',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    padding-top:var(--safe-top);
+    padding-bottom:var(--safe-bottom);
+    -webkit-font-smoothing:antialiased;
+  }
+  @font-face{
+    font-family:'Barlow Condensed';
+    src:local('Barlow Condensed');
+  }
+  a{color:inherit;}
+  button{font-family:inherit;}
+
+  header.app-bar{
+    background:var(--navy);
+    color:#fff;
+    padding:14px 16px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    position:sticky;
+    top:0;
+    z-index:20;
+    border-bottom:3px solid var(--amber);
+  }
+  .brand{
+    font-family:var(--font-display);
+    font-weight:700;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    font-size:20px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .brand img{height:22px;width:auto;display:block;}
+  .brand .divider{width:1px;height:20px;background:rgba(255,255,255,.25);}
+  .brand .app-name{display:flex;flex-direction:column;line-height:1.1;}
+  .brand small{
+    font-family:var(--font-body);
+    font-weight:400;
+    text-transform:none;
+    letter-spacing:0;
+    font-size:11px;
+    color:#BFDAD7;
+  }
+  .auth-box{display:flex;align-items:center;gap:10px;font-size:13px;}
+  .btn{
+    border:none;
+    border-radius:8px;
+    padding:8px 14px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    transition:transform .08s ease, opacity .15s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-amber{background:var(--amber);color:var(--amber-ink);}
+  .btn-outline{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);}
+  .btn-ghost{background:transparent;color:var(--ink-soft);border:1px solid var(--line);}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn-teal{background:var(--teal);color:#fff;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+
+  nav.tabs{
+    display:flex;
+    overflow-x:auto;
+    gap:4px;
+    background:var(--navy-2);
+    padding:0 10px;
+    position:sticky;
+    top:56px;
+    z-index:19;
+    scrollbar-width:none;
+  }
+  nav.tabs::-webkit-scrollbar{display:none;}
+  nav.tabs button{
+    background:transparent;
+    color:#C7CFD8;
+    border:none;
+    padding:12px 14px;
+    font-family:var(--font-display);
+    font-size:15px;
+    letter-spacing:.03em;
+    text-transform:uppercase;
+    white-space:nowrap;
+    border-bottom:3px solid transparent;
+    cursor:pointer;
+  }
+  nav.tabs button.active{color:#fff;border-bottom-color:var(--amber);}
+
+  main{padding:16px;max-width:1000px;margin:0 auto;}
+  .card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+  }
+  h2.section-title{
+    font-family:var(--font-display);
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    font-size:22px;
+    margin:4px 0 14px;
+    color:var(--navy);
+  }
+  .muted{color:var(--ink-soft);font-size:13px;}
+  .empty-state{
+    text-align:center;
+    padding:30px 16px;
+    color:var(--ink-soft);
+  }
+  .empty-state .eyebrow{
+    font-family:var(--font-display);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    font-size:13px;
+    color:var(--teal);
+  }
+
+  input,select,textarea{
+    font-family:inherit;
+    font-size:14px;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:7px;
+    background:#fff;
+    color:var(--ink);
+    width:100%;
+  }
+  label{font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;font-weight:600;}
+  .field{margin-bottom:12px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .row > .field{flex:1;min-width:140px;}
+
+  /* Lista de eventos sin cubrir */
+  .event-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding:12px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .event-row:last-child{border-bottom:none;}
+  .event-fecha{
+    font-family:var(--font-display);
+    font-size:15px;
+    color:var(--teal);
+    min-width:120px;
+  }
+  .event-titulo{font-weight:600;font-size:14px;}
+  .event-cal{font-size:12px;color:var(--ink-soft);}
+
+  /* Chips técnico */
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:var(--navy-2);
+    color:#fff;
+    padding:4px 10px 4px 4px;
+    border-radius:999px;
+    font-size:12.5px;
+    margin:2px 4px 2px 0;
+  }
+  .chip .avatar{
+    width:20px;height:20px;border-radius:50%;
+    background:var(--amber);color:var(--amber-ink);
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:700;
+  }
+  .chip button{
+    background:none;border:none;color:#B7C0CC;cursor:pointer;
+    font-size:14px;line-height:1;padding:0 2px;
+  }
+
+  /* Vista técnico - grid mensual */
+  .month-grid{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:4px;
+  }
+  .day-cell{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:6px;
+    min-height:72px;
+    padding:5px;
+    font-size:11px;
+    position:relative;
+  }
+  .day-num{font-weight:700;color:var(--ink-soft);font-size:10px;}
+  .day-cell.tiene-evento{background:var(--peach);border-color:var(--amber);}
+  .day-cell.ausencia-libranza{background:#EDEDED;}
+  .day-cell.ausencia-permiso{background:#FDE7E1;}
+  .day-cell.ausencia-vacaciones{background:#DFEEF0;}
+  .day-cell .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+  .day-cell .cliente-tag{color:var(--navy);}
+  .day-cell .horario-tag{color:var(--ink-soft);font-size:9.5px;display:block;}
+  .weekday-label{
+    text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;
+    color:var(--ink-soft);padding-bottom:4px;
+  }
+
+  /* Vista general por colores */
+  .general-table-wrap{overflow-x:auto;}
+  table.general-table{border-collapse:collapse;width:100%;font-size:11px;}
+  table.general-table th, table.general-table td{
+    border:1px solid var(--line);
+    padding:4px 5px;
+    text-align:center;
+    min-width:34px;
+  }
+  table.general-table th{background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;}
+  table.general-table td.tecnico-name{
+    text-align:left;font-weight:700;white-space:nowrap;position:sticky;left:0;
+    background:#fff;min-width:150px;
+  }
+  .celda-color{width:100%;height:22px;border-radius:4px;display:block;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:12px;}
+  .legend-item{display:flex;align-items:center;gap:5px;}
+  .legend-swatch{width:12px;height:12px;border-radius:3px;display:inline-block;}
+
+  footer{
+    text-align:center;padding:24px 12px;color:var(--ink-soft);font-size:11px;
+  }
+  .toast{
+    position:fixed;bottom:calc(20px + var(--safe-bottom));left:50%;transform:translateX(-50%);
+    background:var(--navy);color:#fff;padding:10px 18px;border-radius:999px;
+    font-size:13px;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.25);
+    opacity:0;pointer-events:none;transition:opacity .25s ease;
+  }
+  .toast.show{opacity:1;}
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<header class="app-bar">
+  <div class="brand">
+    <img src="icons/logo-scope.png" alt="Scope Producciones" />
+    <div class="divider"></div>
+    <div class="app-name">Asignación<small>Técnicos</small></div>
+  </div>
+  <div class="auth-box" id="authBox">
+    <span class="muted" style="color:#C7CFD8;">Cargando…</span>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="sincubrir" class="active">Sin cubrir</button>
+  <button data-tab="asignar">Asignar</button>
+  <button data-tab="tecnico">Vista técnico</button>
+  <button data-tab="general">Vista general</button>
+  <button data-tab="ausencias">Ausencias</button>
+  <button data-tab="admin" id="tabAdminBtn" class="hidden">Admin</button>
+</nav>
+
+<main>
+
+  <!-- SIN CUBRIR -->
+  <section id="view-sincubrir">
+    <h2 class="section-title">Eventos sin cubrir</h2>
+    <div class="card" id="sincubrirList">
+      <div class="empty-state"><span class="eyebrow">Sin datos aún</span><p>Sincroniza el calendario desde la pestaña Admin.</p></div>
+    </div>
+  </section>
+
+  <!-- ASIGNAR -->
+  <section id="view-asignar" class="hidden">
+    <h2 class="section-title">Asignar técnicos</h2>
+    <div class="card">
+      <div class="field">
+        <label>Evento</label>
+        <select id="selectEvento"></select>
+      </div>
+      <div id="asignarDetalle"></div>
+    </div>
+  </section>
+
+  <!-- VISTA TÉCNICO -->
+  <section id="view-tecnico" class="hidden">
+    <h2 class="section-title">Vista por técnico</h2>
+    <div class="card">
+      <div class="row">
+        <div class="field">
+          <label>Técnico</label>
+          <select id="selectTecnico"></select>
+        </div>
+        <div class="field">
+          <label>Mes</label>
+          <input type="month" id="mesTecnico" />
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div id="tecnicoGrid"></div>
+    </div>
+  </section>
+
+  <!-- VISTA GENERAL -->
+  <section id="view-general" class="hidden">
+    <h2 class="section-title">Vista general</h2>
+    <div class="card">
+      <div class="field" style="max-width:220px;">
+        <label>Mes</label>
+        <input type="month" id="mesGeneral" />
+      </div>
+    </div>
+    <div class="card general-table-wrap">
+      <div id="generalTable"></div>
+      <div class="legend" id="generalLegend"></div>
+    </div>
+  </section>
+
+  <!-- AUSENCIAS -->
+  <section id="view-ausencias" class="hidden">
+    <h2 class="section-title">Libranzas, permisos y vacaciones</h2>
+    <div class="card" id="ausenciasForm">
+      <p class="muted">Inicia sesión como administrador para añadir o quitar ausencias.</p>
+    </div>
+    <div class="card">
+      <div class="field">
+        <label>Filtrar por técnico</label>
+        <select id="selectTecnicoAusencias"></select>
+      </div>
+      <div id="ausenciasList"></div>
+    </div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="view-admin" class="hidden">
+    <h2 class="section-title">Administración</h2>
+    <div class="card">
+      <p class="muted" style="margin-top:0;">Sincroniza los eventos de los calendarios de cliente con la app. Hazlo cada vez que abras la app para gestionar asignaciones.</p>
+      <button class="btn btn-teal" id="btnSync">Sincronizar eventos de Calendar</button>
+      <p class="muted" id="syncStatus"></p>
+    </div>
+    <div class="card">
+      <p class="muted" style="margin-top:0;">Carga inicial de la lista de técnicos (solo hace falta una vez).</p>
+      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
+    </div>
+  </section>
+
+</main>
+
+<footer>Uso interno — Scope Producciones</footer>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {
+  getDatabase, ref, onValue, set, update, remove, get
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+
+/* ---------- CONFIG ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyBOtANAO7Cew62kTR4BfA3SnPgg7qTqyt8",
+  authDomain: "asignacion-tecnicos-scope.firebaseapp.com",
+  databaseURL: "https://asignacion-tecnicos-scope-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "asignacion-tecnicos-scope",
+  storageBucket: "asignacion-tecnicos-scope.firebasestorage.app",
+  messagingSenderId: "854374021026",
+  appId: "1:854374021026:web:b50fd457b6e2a88db824fb"
+};
+
+// Emails con permiso de escritura (añadir aquí a tu compañero cuando toque).
+const ADMIN_EMAILS = ["pperez@scopeproducciones.com"];
+
+// Calendarios de cliente integrados. Añadir Ateneo y Producción aquí más adelante.
+const CALENDARIOS = {
+  juanmarch: { nombre: "Fundación Juan March", calendarId: "9ifm1tnjs47e8l5a1kc7stt9lc@group.calendar.google.com" }
+};
+
+const TECNICOS_INICIALES = [
+  "Álvaro Caletrio","Helena Trigueros","Carlota Falcó","Maca Cervantes","Marta Muñoz",
+  "Laura Rubio","Carlota Guzmán","Simón Rey","Javier López","Emi García","Dani Calzado",
+  "Hugo Ramos","Patricia Pérez de la Manga","Jose Sevilla","Sergio Salas","Juanma Paz"
+];
+
+const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza solo) ---";
+const MARKER_END = "--- fin técnicos ---";
+
+const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
+const AUSENCIA_COLORS = { libranza:"#B9BFC7", permiso:"#E08A6E", vacaciones:"#6FB3BC" };
+const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones" };
+
+/* ---------- INIT ---------- */
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+const provider = new GoogleAuthProvider();
+provider.addScope("https://www.googleapis.com/auth/calendar.events");
+provider.setCustomParameters({ login_hint: ADMIN_EMAILS[0] });
+
+let currentUser = null;
+let accessToken = null;
+let isAdmin = false;
+
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{} };
+
+/* ---------- HELPERS ---------- */
+function slugify(str){
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()
+    .replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
+}
+function initials(nombre){
+  return nombre.split(" ").filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+}
+function colorFor(key){
+  let hash=0;
+  for(let i=0;i<key.length;i++) hash = key.charCodeAt(i) + ((hash<<5)-hash);
+  return COLOR_PALETTE[Math.abs(hash) % COLOR_PALETTE.length];
+}
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2600);
+}
+function fmtFecha(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString("es-ES", { weekday:"short", day:"2-digit", month:"short" });
+}
+function isoDate(d){ return d.toISOString().slice(0,10); }
+function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+
+/* ---------- AUTH ---------- */
+document.getElementById("authBox").addEventListener("click", (e)=>{
+  if(e.target.id==="btnLogin") doLogin();
+  if(e.target.id==="btnLogout") doLogout();
+});
+
+async function doLogin(){
+  try{
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    accessToken = credential.accessToken;
+    toast("Conectado con Google Calendar");
+  }catch(err){
+    console.error(err);
+    toast("No se pudo iniciar sesión: " + err.message);
+  }
+}
+async function doLogout(){
+  accessToken = null;
+  await signOut(auth);
+}
+
+onAuthStateChanged(auth, (user)=>{
+  currentUser = user;
+  isAdmin = !!(user && ADMIN_EMAILS.includes(user.email));
+  renderAuthBox();
+  document.getElementById("tabAdminBtn").classList.toggle("hidden", !isAdmin);
+  render();
+});
+
+function renderAuthBox(){
+  const box = document.getElementById("authBox");
+  if(currentUser && isAdmin){
+    box.innerHTML = `<span>${currentUser.displayName?.split(" ")[0] || currentUser.email}</span>
+      <button class="btn btn-outline" id="btnLogout">Salir</button>`;
+  } else if(currentUser){
+    box.innerHTML = `<span class="muted" style="color:#C7CFD8;">Sin permiso de edición</span>
+      <button class="btn btn-outline" id="btnLogout">Salir</button>`;
+  } else {
+    box.innerHTML = `<button class="btn btn-amber" id="btnLogin">Entrar como admin</button>`;
+  }
+}
+
+/* ---------- DATA SUBSCRIPTIONS (lectura pública, siempre activa) ---------- */
+onValue(ref(db,"tecnicos"), (snap)=>{ STATE.tecnicos = snap.val() || {}; render(); });
+onValue(ref(db,"eventos"), (snap)=>{ STATE.eventos = snap.val() || {}; render(); });
+onValue(ref(db,"asignaciones"), (snap)=>{ STATE.asignaciones = snap.val() || {}; render(); });
+onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; render(); });
+
+/* ---------- TABS ---------- */
+document.getElementById("tabs").addEventListener("click",(e)=>{
+  const btn = e.target.closest("button[data-tab]");
+  if(!btn) return;
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll("main > section").forEach(s=>s.classList.add("hidden"));
+  document.getElementById("view-"+btn.dataset.tab).classList.remove("hidden");
+  render();
+});
+
+/* ---------- CALENDAR API ---------- */
+async function calendarFetch(path, options={}){
+  if(!accessToken) throw new Error("No hay sesión de Google Calendar activa. Pulsa 'Entrar como admin'.");
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/${path}`, {
+    ...options,
+    headers: { Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json", ...(options.headers||{}) }
+  });
+  if(!res.ok){
+    const body = await res.text();
+    throw new Error(`Calendar API ${res.status}: ${body}`);
+  }
+  return res.json();
+}
+
+async function syncCalendario(claveCal, calInfo){
+  const timeMin = new Date().toISOString();
+  const timeMax = new Date(Date.now() + 1000*60*60*24*70).toISOString(); // 10 semanas vista
+  const params = new URLSearchParams({ timeMin, timeMax, singleEvents:"true", orderBy:"startTime", maxResults:"250" });
+  const data = await calendarFetch(`calendars/${encodeURIComponent(calInfo.calendarId)}/events?${params}`);
+  const updates = {};
+  (data.items||[]).forEach(ev=>{
+    if(ev.status === "cancelled") return;
+    updates[`eventos/${ev.id}`] = {
+      calendario: claveCal,
+      calendarId: calInfo.calendarId,
+      summary: ev.summary || "(sin título)",
+      start: ev.start?.dateTime || ev.start?.date,
+      end: ev.end?.dateTime || ev.end?.date,
+      description: ev.description || ""
+    };
+  });
+  await update(ref(db), updates);
+  return Object.keys(updates).length;
+}
+
+document.getElementById("btnSync").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("syncStatus");
+  try{
+    statusEl.textContent = "Sincronizando…";
+    let total = 0;
+    for(const [clave, info] of Object.entries(CALENDARIOS)){
+      total += await syncCalendario(clave, info);
+    }
+    statusEl.textContent = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos)`;
+    toast("Calendario sincronizado");
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "Error al sincronizar: " + err.message;
+  }
+});
+
+document.getElementById("btnSeedTecnicos").addEventListener("click", async ()=>{
+  const snap = await get(ref(db,"tecnicos"));
+  if(snap.exists()){
+    toast("La lista de técnicos ya existe, no se ha modificado.");
+    return;
+  }
+  const updates = {};
+  TECNICOS_INICIALES.forEach(nombre=>{
+    updates[slugify(nombre)] = { nombre };
+  });
+  await set(ref(db,"tecnicos"), updates);
+  toast("Técnicos cargados");
+});
+
+/* Actualiza (o inserta) el bloque de técnicos en la descripción del evento en Google Calendar */
+async function actualizarDescripcionEvento(eventId){
+  const evento = STATE.eventos[eventId];
+  if(!evento) return;
+  const asign = STATE.asignaciones[eventId] || {};
+  const nombres = Object.keys(asign).map(tid => STATE.tecnicos[tid]?.nombre).filter(Boolean);
+
+  // Traemos la descripción actual real desde Calendar (por si alguien la editó a mano)
+  const actual = await calendarFetch(`calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}`);
+  const original = actual.description || "";
+  const block = `${MARKER_START}\n${nombres.length ? nombres.join(", ") : "(sin asignar)"}\n${MARKER_END}`;
+  const re = new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`);
+  const nuevaDescripcion = re.test(original) ? original.replace(re, block) : (original ? original.trim()+"\n\n" : "") + block;
+
+  await calendarFetch(
+    `calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}?sendUpdates=none`,
+    { method:"PATCH", body: JSON.stringify({ description: nuevaDescripcion }) }
+  );
+  await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
+}
+
+/* ---------- ASIGNACIÓN ---------- */
+async function asignarTecnico(eventId, tecnicoId, horario, descanso){
+  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descanso: descanso||"" });
+  try{ await actualizarDescripcionEvento(eventId); }
+  catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
+  toast("Técnico asignado");
+}
+async function desasignarTecnico(eventId, tecnicoId){
+  await remove(ref(db, `asignaciones/${eventId}/${tecnicoId}`));
+  try{ await actualizarDescripcionEvento(eventId); }
+  catch(err){ toast("Quitado en la app, pero falló Calendar: "+err.message); return; }
+  toast("Técnico desasignado");
+}
+
+/* ---------- AUSENCIAS ---------- */
+async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo){
+  const updates = {};
+  let d = new Date(fechaInicio);
+  const fin = new Date(fechaFin || fechaInicio);
+  while(d <= fin){
+    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = { tipo };
+    d.setDate(d.getDate()+1);
+  }
+  await update(ref(db), updates);
+  toast("Ausencia guardada");
+}
+async function removeAusencia(tecnicoId, fecha){
+  await remove(ref(db, `ausencias/${tecnicoId}/${fecha}`));
+}
+
+/* ---------- RENDER ---------- */
+function render(){
+  const activeTab = document.querySelector("nav.tabs button.active")?.dataset.tab;
+  if(!activeTab) return;
+  if(activeTab==="sincubrir") renderSinCubrir();
+  if(activeTab==="asignar") renderAsignar();
+  if(activeTab==="tecnico") renderVistaTecnico();
+  if(activeTab==="general") renderVistaGeneral();
+  if(activeTab==="ausencias") renderAusencias();
+}
+
+function renderSinCubrir(){
+  const cont = document.getElementById("sincubrirList");
+  const eventos = Object.entries(STATE.eventos)
+    .filter(([id])=> !STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0)
+    .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
+
+  if(eventos.length===0){
+    cont.innerHTML = `<div class="empty-state"><span class="eyebrow">Todo cubierto</span><p>No hay eventos próximos sin técnico asignado.</p></div>`;
+    return;
+  }
+  cont.innerHTML = eventos.map(([id, ev])=>`
+    <div class="event-row">
+      <div>
+        <div class="event-fecha">${fmtFecha(ev.start)}</div>
+      </div>
+      <div style="flex:1;">
+        <div class="event-titulo">${ev.summary}</div>
+        <div class="event-cal">${CALENDARIOS[ev.calendario]?.nombre || ev.calendario}</div>
+      </div>
+      <button class="btn btn-teal" data-goto-asignar="${id}">Asignar</button>
+    </div>
+  `).join("");
+
+  cont.querySelectorAll("[data-goto-asignar]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelector('nav.tabs button[data-tab="asignar"]').click();
+      document.getElementById("selectEvento").value = btn.dataset.gotoAsignar;
+      renderAsignarDetalle(btn.dataset.gotoAsignar);
+    });
+  });
+}
+
+function renderAsignar(){
+  const select = document.getElementById("selectEvento");
+  const eventos = Object.entries(STATE.eventos).sort((a,b)=> new Date(a[1].start)-new Date(b[1].start));
+  const prev = select.value;
+  select.innerHTML = eventos.map(([id,ev])=>
+    `<option value="${id}">${fmtFecha(ev.start)} — ${ev.summary}</option>`
+  ).join("") || `<option value="">No hay eventos sincronizados</option>`;
+  if(prev && STATE.eventos[prev]) select.value = prev;
+  select.onchange = ()=> renderAsignarDetalle(select.value);
+  renderAsignarDetalle(select.value);
+}
+
+function renderAsignarDetalle(eventId){
+  const cont = document.getElementById("asignarDetalle");
+  const evento = STATE.eventos[eventId];
+  if(!evento){ cont.innerHTML = ""; return; }
+  const asign = STATE.asignaciones[eventId] || {};
+  const asignadosHtml = Object.entries(asign).map(([tid,datos])=>{
+    const nombre = STATE.tecnicos[tid]?.nombre || tid;
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.horario?` · ${datos.horario}`:""}
+      ${isAdmin?`<button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
+  }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
+
+  const opcionesTecnicos = Object.entries(STATE.tecnicos)
+    .filter(([tid])=> !asign[tid])
+    .map(([tid,t])=>`<option value="${tid}">${t.nombre}</option>`).join("");
+
+  cont.innerHTML = `
+    <p class="muted" style="margin-top:0;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)}</p>
+    <div>${asignadosHtml}</div>
+    ${isAdmin ? `
+    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+    <div class="row">
+      <div class="field">
+        <label>Añadir técnico</label>
+        <select id="nuevoTecnico">${opcionesTecnicos || '<option value="">(todos ya asignados)</option>'}</select>
+      </div>
+      <div class="field">
+        <label>Horario</label>
+        <input type="text" id="nuevoHorario" placeholder="09:00–18:00">
+      </div>
+      <div class="field">
+        <label>Descanso</label>
+        <input type="text" id="nuevoDescanso" placeholder="14:00–15:00">
+      </div>
+    </div>
+    <button class="btn btn-amber" id="btnAsignar">Asignar a este evento</button>
+    ` : `<p class="muted">Inicia sesión como admin para modificar asignaciones.</p>`}
+  `;
+
+  cont.querySelectorAll("[data-quitar]").forEach(btn=>{
+    btn.addEventListener("click", ()=> desasignarTecnico(eventId, btn.dataset.quitar));
+  });
+  const btnAsignar = document.getElementById("btnAsignar");
+  if(btnAsignar){
+    btnAsignar.addEventListener("click", ()=>{
+      const tid = document.getElementById("nuevoTecnico").value;
+      if(!tid) return;
+      const horario = document.getElementById("nuevoHorario").value;
+      const descanso = document.getElementById("nuevoDescanso").value;
+      asignarTecnico(eventId, tid, horario, descanso);
+    });
+  }
+}
+
+function eventosDelDia(fechaIso){
+  return Object.entries(STATE.eventos).filter(([,ev])=> (ev.start||"").slice(0,10) === fechaIso);
+}
+
+function renderVistaTecnico(){
+  const selTec = document.getElementById("selectTecnico");
+  const mesInput = document.getElementById("mesTecnico");
+  if(!selTec.dataset.filled){
+    selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
+    selTec.dataset.filled = "1";
+    selTec.onchange = renderVistaTecnico;
+  }
+  if(!mesInput.value) mesInput.value = new Date().toISOString().slice(0,7);
+  mesInput.onchange = renderVistaTecnico;
+
+  const tecnicoId = selTec.value;
+  const [year, month] = mesInput.value.split("-").map(Number);
+  const grid = document.getElementById("tecnicoGrid");
+  if(!tecnicoId){ grid.innerHTML = `<p class="muted">Carga la lista de técnicos desde Admin.</p>`; return; }
+
+  const diasEnMes = new Date(year, month, 0).getDate();
+  const primerDiaSemana = (new Date(year, month-1, 1).getDay() + 6) % 7; // lunes=0
+  let html = `<div class="month-grid">`;
+  ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
+  for(let i=0;i<primerDiaSemana;i++) html += `<div></div>`;
+
+  for(let day=1; day<=diasEnMes; day++){
+    const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
+    const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
+    let cls = "day-cell";
+    let contenido = "";
+    if(ausencia){
+      cls += ` ausencia-${ausencia.tipo}`;
+      contenido = `<div class="tag">${AUSENCIA_LABELS[ausencia.tipo]}</div>`;
+    } else if(eventosDia.length){
+      cls += " tiene-evento";
+      contenido = eventosDia.map(([id,ev])=>{
+        const datos = STATE.asignaciones[id][tecnicoId];
+        return `<div class="tag cliente-tag">${ev.summary}</div>${datos.horario?`<span class="horario-tag">${datos.horario}</span>`:""}`;
+      }).join("");
+    }
+    html += `<div class="${cls}"><div class="day-num">${day}</div>${contenido}</div>`;
+  }
+  html += `</div>`;
+  grid.innerHTML = html;
+}
+
+function renderVistaGeneral(){
+  const mesInput = document.getElementById("mesGeneral");
+  if(!mesInput.value) mesInput.value = new Date().toISOString().slice(0,7);
+  mesInput.onchange = renderVistaGeneral;
+  const [year, month] = mesInput.value.split("-").map(Number);
+  const diasEnMes = new Date(year, month, 0).getDate();
+
+  const tecnicosOrdenados = Object.entries(STATE.tecnicos).sort((a,b)=> a[1].nombre.localeCompare(b[1].nombre,"es"));
+  const clientesUsados = new Set();
+
+  let head = `<tr><th>Técnico</th>`;
+  for(let day=1; day<=diasEnMes; day++) head += `<th>${day}</th>`;
+  head += `</tr>`;
+
+  let rows = tecnicosOrdenados.map(([tid,t])=>{
+    let cells = `<td class="tecnico-name">${t.nombre}</td>`;
+    for(let day=1; day<=diasEnMes; day++){
+      const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const ausencia = STATE.ausencias[tid]?.[fechaIso];
+      const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
+      let color = "transparent";
+      let titulo = "";
+      if(ausencia){
+        color = AUSENCIA_COLORS[ausencia.tipo];
+        titulo = AUSENCIA_LABELS[ausencia.tipo];
+      } else if(eventosDia.length){
+        const ev = eventosDia[0][1];
+        color = colorFor(ev.calendario);
+        clientesUsados.add(ev.calendario);
+        titulo = ev.summary;
+      }
+      cells += `<td title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
+    }
+    return `<tr>${cells}</tr>`;
+  }).join("");
+
+  document.getElementById("generalTable").innerHTML = `<table class="general-table"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+
+  let legend = "";
+  clientesUsados.forEach(clave=>{
+    legend += `<span class="legend-item"><span class="legend-swatch" style="background:${colorFor(clave)};"></span>${CALENDARIOS[clave]?.nombre || clave}</span>`;
+  });
+  Object.entries(AUSENCIA_LABELS).forEach(([key,label])=>{
+    legend += `<span class="legend-item"><span class="legend-swatch" style="background:${AUSENCIA_COLORS[key]};"></span>${label}</span>`;
+  });
+  document.getElementById("generalLegend").innerHTML = legend;
+}
+
+function renderAusencias(){
+  const selTec = document.getElementById("selectTecnicoAusencias");
+  if(!selTec.dataset.filled){
+    selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
+    selTec.dataset.filled = "1";
+    selTec.onchange = renderAusencias;
+  }
+  const formCont = document.getElementById("ausenciasForm");
+  if(isAdmin){
+    formCont.innerHTML = `
+      <div class="row">
+        <div class="field">
+          <label>Técnico</label>
+          <select id="ausTecnico">${Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("")}</select>
+        </div>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="ausTipo">
+            <option value="libranza">Libranza</option>
+            <option value="permiso">Permiso</option>
+            <option value="vacaciones">Vacaciones</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Desde</label><input type="date" id="ausDesde"></div>
+        <div class="field"><label>Hasta (opcional, si es un solo día déjalo vacío)</label><input type="date" id="ausHasta"></div>
+      </div>
+      <button class="btn btn-amber" id="btnAddAusencia">Guardar ausencia</button>
+    `;
+    document.getElementById("btnAddAusencia").addEventListener("click", ()=>{
+      const tid = document.getElementById("ausTecnico").value;
+      const tipo = document.getElementById("ausTipo").value;
+      const desde = document.getElementById("ausDesde").value;
+      const hasta = document.getElementById("ausHasta").value;
+      if(!tid || !desde) return toast("Falta técnico o fecha");
+      addAusencia(tid, desde, hasta, tipo);
+    });
+  } else {
+    formCont.innerHTML = `<p class="muted" style="margin:0;">Inicia sesión como administrador para añadir o quitar ausencias.</p>`;
+  }
+
+  const tid = selTec.value;
+  const lista = Object.entries(STATE.ausencias[tid] || {}).sort((a,b)=> a[0].localeCompare(b[0]));
+  document.getElementById("ausenciasList").innerHTML = lista.length ? lista.map(([fecha,datos])=>`
+    <div class="event-row">
+      <div class="event-fecha">${fecha}</div>
+      <div style="flex:1;">${AUSENCIA_LABELS[datos.tipo] || datos.tipo}</div>
+      ${isAdmin?`<button class="btn btn-ghost" data-del-ausencia="${fecha}">Quitar</button>`:""}
+    </div>
+  `).join("") : `<p class="muted">Sin ausencias registradas.</p>`;
+
+  document.getElementById("ausenciasList").querySelectorAll("[data-del-ausencia]").forEach(btn=>{
+    btn.addEventListener("click", ()=> removeAusencia(tid, btn.dataset.delAusencia));
+  });
+}
+
+/* ---------- PWA ---------- */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=> navigator.serviceWorker.register("sw.js"));
+}
+
+render();
+</script>
+</body>
+</html>
