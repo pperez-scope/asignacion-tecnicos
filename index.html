@@ -549,8 +549,9 @@ async function calendarFetch(path, options={}){
 }
 
 async function syncCalendario(claveCal, calInfo){
-  const ahora = new Date();
-  const timeMin = ahora.toISOString();
+  const inicioVentana = new Date();
+  inicioVentana.setHours(0,0,0,0);
+  const timeMin = inicioVentana.toISOString();
   const timeMax = new Date(Date.now() + 1000*60*60*24*70).toISOString(); // 10 semanas vista
   const params = new URLSearchParams({ timeMin, timeMax, singleEvents:"true", orderBy:"startTime", maxResults:"250" });
   const data = await calendarFetch(`calendars/${encodeURIComponent(calInfo.calendarId)}/events?${params}`);
@@ -570,11 +571,13 @@ async function syncCalendario(claveCal, calInfo){
   });
   // Detectar eventos que ya no existen en Calendar dentro de esta misma ventana de fechas
   // (borrados o cancelados) y quitarlos también de la app, junto con sus asignaciones.
+  // Se usa el inicio del día de hoy (no la hora exacta) para no dejar fuera eventos de
+  // hoy ya empezados o eventos de "todo el día" (que Google guarda a medianoche UTC).
   let borrados = 0;
   Object.entries(STATE.eventos).forEach(([id, ev])=>{
     if(ev.calendario !== claveCal) return;
     const inicioEvento = new Date(ev.start);
-    if(inicioEvento >= ahora && inicioEvento <= new Date(timeMax) && !fetchedIds.has(id)){
+    if(inicioEvento >= inicioVentana && inicioEvento <= new Date(timeMax) && !fetchedIds.has(id)){
       updates[`eventos/${id}`] = null;
       updates[`asignaciones/${id}`] = null;
       borrados++;
