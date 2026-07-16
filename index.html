@@ -294,6 +294,8 @@
   .day-cell.ausencia-libranza{background:#EDEDED;}
   .day-cell.ausencia-permiso{background:#FDE7E1;}
   .day-cell.ausencia-vacaciones{background:#DFEEF0;}
+  .day-cell.ausencia-oficina{background:#FBF2D9;}
+  .day-cell.ausencia-manual{background:#EEE9FA;}
   .day-cell .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
 
   /* Bloque de turno: horario grande e inequívoco (entrada → salida), mini línea de tiempo y descanso aparte */
@@ -421,10 +423,10 @@
 
 <nav class="tabs" id="tabs">
   <button data-tab="sincubrir" class="active">Sin cubrir</button>
-  <button data-tab="asignar">Asignaciones</button>
+  <button data-tab="asignar">Asignaciones Eventos / Grabaciones / Rodajes</button>
   <button data-tab="tecnico">Vista técnico</button>
   <button data-tab="general">Vista general</button>
-  <button data-tab="ausencias">Ausencias</button>
+  <button data-tab="ausencias">Otras asignaciones</button>
   <button data-tab="admin" id="tabAdminBtn" class="hidden">Admin</button>
 </nav>
 
@@ -440,7 +442,7 @@
 
   <!-- ASIGNACIONES -->
   <section id="view-asignar" class="hidden">
-    <h2 class="section-title">Asignaciones</h2>
+    <h2 class="section-title">Asignaciones Eventos / Grabaciones / Rodajes</h2>
     <div class="card">
       <div class="row" style="align-items:flex-end;">
         <div class="field">
@@ -506,7 +508,7 @@
 
   <!-- AUSENCIAS -->
   <section id="view-ausencias" class="hidden">
-    <h2 class="section-title">Libranzas, permisos y vacaciones</h2>
+    <h2 class="section-title">Otras asignaciones</h2>
     <div class="card" id="ausenciasForm">
       <p class="muted">Inicia sesión como administrador para añadir o quitar ausencias.</p>
     </div>
@@ -576,8 +578,9 @@ const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza so
 const MARKER_END = "--- fin técnicos ---";
 
 const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
-const AUSENCIA_COLORS = { libranza:"#B9BFC7", permiso:"#E08A6E", vacaciones:"#6FB3BC" };
-const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones" };
+const AUSENCIA_COLORS = { libranza:"#B9BFC7", permiso:"#E08A6E", vacaciones:"#6FB3BC", oficina:"#C9A227", manual:"#8F7CC7" };
+const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual" };
+const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
 
 /* ---------- INIT ---------- */
 const app = initializeApp(firebaseConfig);
@@ -897,16 +900,19 @@ async function desasignarTecnico(eventId, tecnicoId){
 }
 
 /* ---------- AUSENCIAS ---------- */
-async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo){
+async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota){
   const updates = {};
   let d = new Date(fechaInicio);
   const fin = new Date(fechaFin || fechaInicio);
   while(d <= fin){
-    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = { tipo };
+    const entrada = { tipo };
+    if(horario) entrada.horario = horario;
+    if(nota) entrada.nota = nota;
+    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = entrada;
     d.setDate(d.getDate()+1);
   }
   await update(ref(db), updates);
-  toast("Ausencia guardada");
+  toast("Guardado");
 }
 async function removeAusencia(tecnicoId, fecha){
   await remove(ref(db, `ausencias/${tecnicoId}/${fecha}`));
@@ -1270,7 +1276,15 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
   let contenido = "";
   if(ausencia){
     cls += ` ausencia-${ausencia.tipo}`;
-    contenido = `<div class="tag">${AUSENCIA_LABELS[ausencia.tipo]}</div>`;
+    if(ausencia.tipo==="oficina" || ausencia.tipo==="manual"){
+      contenido = `<div class="turno-block" style="border-left-color:${AUSENCIA_COLORS[ausencia.tipo]};">
+        <div class="turno-cliente">${AUSENCIA_LABELS[ausencia.tipo]}</div>
+        ${ausencia.horario ? `<div class="turno-horario" style="font-size:12px;">${ausencia.horario}</div>` : ""}
+        ${ausencia.nota ? `<div class="turno-descanso">${ausencia.nota}</div>` : ""}
+      </div>`;
+    } else {
+      contenido = `<div class="tag">${AUSENCIA_LABELS[ausencia.tipo]}</div>`;
+    }
   } else if(eventosDia.length){
     cls += " tiene-evento";
     contenido = eventosDia.map(([id,ev])=>{
@@ -1296,7 +1310,26 @@ function duracionTurnoHoras(datos){
   if(datos.descansoMinutos) horas -= datos.descansoMinutos / 60;
   return Math.max(0, horas);
 }
+/* Suma la duración de todos los tramos "HH:MM–HH:MM" que aparezcan en un texto libre (para horarios partidos, ej. Oficina Scope) */
+function horasDesdeTextoLibre(str){
+  if(!str) return 0;
+  const regex = /(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})/g;
+  let total = 0, m;
+  while((m = regex.exec(str))){
+    let inicio = (+m[1])*60 + (+m[2]), fin = (+m[3])*60 + (+m[4]);
+    if(fin <= inicio) fin += 24*60;
+    total += (fin-inicio)/60;
+  }
+  return total;
+}
 function horasDiaTecnico(tecnicoId, fechaIso){
+  const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
+  if(ausencia){
+    if((ausencia.tipo==="oficina" || ausencia.tipo==="manual") && ausencia.horario){
+      return horasDesdeTextoLibre(ausencia.horario);
+    }
+    return 0;
+  }
   return eventosDelDia(fechaIso)
     .filter(([id])=> STATE.asignaciones[id]?.[tecnicoId])
     .reduce((sum,[id])=> sum + duracionTurnoHoras(STATE.asignaciones[id][tecnicoId]), 0);
@@ -1448,6 +1481,8 @@ function renderAusencias(){
             <option value="libranza">Libranza</option>
             <option value="permiso">Permiso</option>
             <option value="vacaciones">Vacaciones</option>
+            <option value="oficina">Oficina Scope</option>
+            <option value="manual">Asignación manual</option>
           </select>
         </div>
       </div>
@@ -1455,18 +1490,46 @@ function renderAusencias(){
         <div class="field"><label>Desde</label><input type="date" id="ausDesde"></div>
         <div class="field"><label>Hasta (opcional, si es un solo día déjalo vacío)</label><input type="date" id="ausHasta"></div>
       </div>
-      <button class="btn btn-amber" id="btnAddAusencia">Guardar ausencia</button>
+      <div class="row hidden" id="ausHorarioRow">
+        <div class="field">
+          <label>Horario</label>
+          <input type="text" id="ausHorario" placeholder="09:00–14:00 y 15:00–18:00">
+        </div>
+      </div>
+      <div class="row hidden" id="ausNotaRow">
+        <div class="field">
+          <label>Descripción (qué es esta asignación)</label>
+          <input type="text" id="ausNota" placeholder="Ej: apoyo montaje almacén, grabación no calendarizada...">
+        </div>
+      </div>
+      <button class="btn btn-amber" id="btnAddAusencia">Guardar</button>
     `;
+    const tipoSelect = document.getElementById("ausTipo");
+    const horarioRow = document.getElementById("ausHorarioRow");
+    const notaRow = document.getElementById("ausNotaRow");
+    const horarioInput = document.getElementById("ausHorario");
+    const actualizarCamposTipo = ()=>{
+      const tipo = tipoSelect.value;
+      const necesitaHorario = tipo==="oficina" || tipo==="manual";
+      horarioRow.classList.toggle("hidden", !necesitaHorario);
+      notaRow.classList.toggle("hidden", tipo!=="manual");
+      if(tipo==="oficina" && !horarioInput.value) horarioInput.value = AUSENCIA_HORARIO_DEFECTO.oficina;
+    };
+    tipoSelect.addEventListener("change", actualizarCamposTipo);
+    actualizarCamposTipo();
+
     document.getElementById("btnAddAusencia").addEventListener("click", ()=>{
       const tid = document.getElementById("ausTecnico").value;
-      const tipo = document.getElementById("ausTipo").value;
+      const tipo = tipoSelect.value;
       const desde = document.getElementById("ausDesde").value;
       const hasta = document.getElementById("ausHasta").value;
+      const horario = (tipo==="oficina"||tipo==="manual") ? horarioInput.value : "";
+      const nota = tipo==="manual" ? document.getElementById("ausNota").value : "";
       if(!tid || !desde) return toast("Falta técnico o fecha");
-      addAusencia(tid, desde, hasta, tipo);
+      addAusencia(tid, desde, hasta, tipo, horario, nota);
     });
   } else {
-    formCont.innerHTML = `<p class="muted" style="margin:0;">Inicia sesión como administrador para añadir o quitar ausencias.</p>`;
+    formCont.innerHTML = `<p class="muted" style="margin:0;">Inicia sesión como administrador para añadir o quitar entradas.</p>`;
   }
 
   const tid = selTec.value;
@@ -1474,10 +1537,14 @@ function renderAusencias(){
   document.getElementById("ausenciasList").innerHTML = lista.length ? lista.map(([fecha,datos])=>`
     <div class="event-row">
       <div class="event-fecha">${fecha}</div>
-      <div style="flex:1;">${AUSENCIA_LABELS[datos.tipo] || datos.tipo}</div>
+      <div style="flex:1;">
+        ${AUSENCIA_LABELS[datos.tipo] || datos.tipo}
+        ${datos.horario?` · ${datos.horario}`:""}
+        ${datos.nota?` · ${datos.nota}`:""}
+      </div>
       ${isAdmin?`<button class="btn btn-ghost" data-del-ausencia="${fecha}">Quitar</button>`:""}
     </div>
-  `).join("") : `<p class="muted">Sin ausencias registradas.</p>`;
+  `).join("") : `<p class="muted">Sin entradas registradas.</p>`;
 
   document.getElementById("ausenciasList").querySelectorAll("[data-del-ausencia]").forEach(btn=>{
     btn.addEventListener("click", ()=> removeAusencia(tid, btn.dataset.delAusencia));
