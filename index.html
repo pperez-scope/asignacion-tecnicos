@@ -1041,7 +1041,7 @@ function renderAsignarDetalle(eventId){
       </div>
       <div class="field" style="max-width:160px;">
         <label>Minutos de descanso</label>
-        <input type="number" id="nuevoDescansoMinutos" value="30" min="0" step="5">
+        <input type="number" id="nuevoDescansoMinutos" value="15" min="0" step="5">
       </div>
     </div>
     <p class="muted" id="descansoAutoHint" style="margin-top:-6px;"></p>
@@ -1099,9 +1099,10 @@ function renderAsignarDetalle(eventId){
 
   const evaluarDescansoAuto = ()=>{
     const horas = parseDuracionHoras(inputHorario.value);
-    if(horas !== null && horas > 6){
+    if(horas !== null && horas >= 6){
       chkDescanso.checked = true;
-      hintDescanso.textContent = `El turno dura ${horas.toFixed(1).replace(".0","")} h (más de 6), así que se ha marcado el descanso automáticamente. Puedes desmarcarlo si no aplica.`;
+      if(!inputMinutos.value || inputMinutos.value==="0") inputMinutos.value = 15;
+      hintDescanso.textContent = `El turno dura ${horas.toFixed(1).replace(".0","")} h (6 o más), así que se ha marcado un descanso de 15 min automáticamente. Puedes desmarcarlo o ajustar los minutos si no aplica.`;
     } else {
       chkDescanso.checked = false;
       hintDescanso.textContent = horas!==null ? `El turno dura ${horas.toFixed(1).replace(".0","")} h. Márcalo a mano si aun así hace falta descanso.` : "";
