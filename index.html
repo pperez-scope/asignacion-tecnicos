@@ -284,19 +284,63 @@
     background:#fff;
     border:1px solid var(--line);
     border-radius:6px;
-    min-height:72px;
+    min-height:96px;
     padding:5px;
     font-size:11px;
     position:relative;
   }
   .day-num{font-weight:700;color:var(--ink-soft);font-size:10px;}
-  .day-cell.tiene-evento{background:var(--peach);border-color:var(--amber);}
+  .day-cell.tiene-evento{background:#FDFCFA;border-color:var(--amber);}
   .day-cell.ausencia-libranza{background:#EDEDED;}
   .day-cell.ausencia-permiso{background:#FDE7E1;}
   .day-cell.ausencia-vacaciones{background:#DFEEF0;}
   .day-cell .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
-  .day-cell .cliente-tag{color:var(--navy);}
-  .day-cell .horario-tag{color:var(--ink-soft);font-size:9.5px;display:block;}
+
+  /* Bloque de turno: horario grande e inequívoco (entrada → salida), mini línea de tiempo y descanso aparte */
+  .turno-block{
+    background:#fff;
+    border:1px solid var(--line);
+    border-left-width:4px;
+    border-left-style:solid;
+    border-radius:6px;
+    padding:5px 7px 6px;
+    margin-bottom:5px;
+    box-shadow:0 1px 2px rgba(0,0,0,.05);
+  }
+  .turno-block:last-child{margin-bottom:0;}
+  .turno-horario{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:14px;
+    letter-spacing:.02em;
+    color:var(--navy);
+    line-height:1.15;
+  }
+  .turno-cliente{
+    font-size:10.5px;
+    font-weight:600;
+    color:var(--ink);
+    margin-top:3px;
+    line-height:1.25;
+  }
+  .turno-descanso{
+    font-size:9.5px;
+    color:var(--ink-soft);
+    margin-top:3px;
+  }
+  .turno-timeline{
+    position:relative;
+    height:5px;
+    background:#EAE8E2;
+    border-radius:3px;
+    margin:5px 0 1px;
+    overflow:hidden;
+  }
+  .turno-timeline-bar{
+    position:absolute;top:0;bottom:0;
+    background:var(--teal);
+    border-radius:3px;
+  }
   .weekday-label{
     text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;
     color:var(--ink-soft);padding-bottom:4px;
@@ -1134,7 +1178,9 @@ function renderAsignarDetalle(eventId){
 }
 
 function eventosDelDia(fechaIso){
-  return Object.entries(STATE.eventos).filter(([,ev])=> (ev.start||"").slice(0,10) === fechaIso);
+  return Object.entries(STATE.eventos)
+    .filter(([,ev])=> (ev.start||"").slice(0,10) === fechaIso)
+    .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
 }
 
 let tecnicoModo = "semana";
@@ -1173,6 +1219,29 @@ function renderVistaTecnico(){
   else renderTecnicoMes(tecnicoId, mesInput.value, grid);
 }
 
+/* Parsea "HH:MM–HH:MM" a minutos desde medianoche, contemplando turnos que cruzan la medianoche */
+function parseRangoMinutos(str){
+  const m = (str||"").match(/^(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  const h1=+m[1], mi1=+m[2], h2=+m[3], mi2=+m[4];
+  let inicio = h1*60+mi1, fin = h2*60+mi2;
+  if(fin <= inicio) fin += 24*60;
+  return { inicio, fin };
+}
+
+// Franja de referencia para la mini línea de tiempo (06:00–02:00, cubre turnos hasta bien entrada la noche)
+const TIMELINE_INICIO = 6*60;
+const TIMELINE_FIN = 26*60;
+
+function timelineHTML(rango){
+  if(!rango) return "";
+  const total = TIMELINE_FIN - TIMELINE_INICIO;
+  const left = Math.max(0, Math.min(100, (rango.inicio-TIMELINE_INICIO)/total*100));
+  const rightRaw = Math.max(0, Math.min(100, (rango.fin-TIMELINE_INICIO)/total*100));
+  const width = Math.max(2, rightRaw-left);
+  return `<div class="turno-timeline"><span class="turno-timeline-bar" style="left:${left}%;width:${width}%;"></span></div>`;
+}
+
 function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
@@ -1185,11 +1254,18 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
     cls += " tiene-evento";
     contenido = eventosDia.map(([id,ev])=>{
       const datos = STATE.asignaciones[id][tecnicoId];
-      return `<div class="tag cliente-tag">${ev.summary}</div>${datos.horario?`<span class="horario-tag">${datos.horario}</span>`:""}${datos.descansoMinutos?`<span class="horario-tag">Descanso ${datos.descansoMinutos} min</span>`:""}`;
+      const rango = parseRangoMinutos(datos.horario);
+      return `<div class="turno-block" style="border-left-color:${colorFor(ev.calendario)};">
+        ${datos.horario ? `<div class="turno-horario">${datos.horario.replace(/[–-]/, " → ")}</div>` : ""}
+        ${timelineHTML(rango)}
+        <div class="turno-cliente">${ev.summary}</div>
+        ${datos.descansoMinutos ? `<div class="turno-descanso">☕ ${datos.descansoMinutos} min descanso</div>` : ""}
+      </div>`;
     }).join("");
   }
   return { cls, contenido };
 }
+
 
 function renderTecnicoSemana(tecnicoId, grid){
   if(!weekState.tecnico) weekState.tecnico = startOfWeek(new Date());
