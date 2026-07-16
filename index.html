@@ -355,7 +355,7 @@
 
 <nav class="tabs" id="tabs">
   <button data-tab="sincubrir" class="active">Sin cubrir</button>
-  <button data-tab="asignar">Asignar</button>
+  <button data-tab="asignar">Asignaciones</button>
   <button data-tab="tecnico">Vista técnico</button>
   <button data-tab="general">Vista general</button>
   <button data-tab="ausencias">Ausencias</button>
@@ -367,14 +367,14 @@
   <!-- SIN CUBRIR -->
   <section id="view-sincubrir">
     <h2 class="section-title">Eventos sin cubrir</h2>
-    <div class="card" id="sincubrirWeek">
+    <div class="card" id="sincubrirList">
       <div class="empty-state"><span class="eyebrow">Sin datos aún</span><p>Sincroniza el calendario desde la pestaña Admin.</p></div>
     </div>
   </section>
 
-  <!-- ASIGNAR -->
+  <!-- ASIGNACIONES -->
   <section id="view-asignar" class="hidden">
-    <h2 class="section-title">Asignar técnicos</h2>
+    <h2 class="section-title">Asignaciones</h2>
     <div class="card" id="asignarWeek"></div>
     <div class="card hidden" id="asignarDetalleCard">
       <div id="asignarDetalle"></div>
@@ -843,10 +843,36 @@ function render(){
 }
 
 function renderSinCubrir(){
-  renderWeekGrid("sincubrirWeek", "sincubrir", { onlySinCubrir:true, clickable:true });
-  // Al pulsar un evento aquí saltamos a Asignar en la misma semana (ver renderWeekGrid)
-  document.querySelectorAll('#sincubrirWeek [data-event-id]').forEach(card=>{
-    card.addEventListener("click", ()=>{ weekState.asignar = new Date(weekState.sincubrir); }, { once:true, capture:true });
+  const cont = document.getElementById("sincubrirList");
+  const eventos = Object.entries(STATE.eventos)
+    .filter(([id])=> !STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0)
+    .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
+
+  if(eventos.length===0){
+    cont.innerHTML = `<div class="empty-state"><span class="eyebrow">Todo cubierto</span><p>No hay eventos próximos sin técnico asignado.</p></div>`;
+    return;
+  }
+  cont.innerHTML = eventos.map(([id, ev])=>`
+    <div class="event-row">
+      <div>
+        <div class="event-fecha">${fmtFecha(ev.start)}</div>
+      </div>
+      <div style="flex:1;">
+        <div class="event-titulo">${ev.summary}</div>
+        <div class="event-cal">${CALENDARIOS[ev.calendario]?.nombre || ev.calendario}</div>
+      </div>
+      <button class="btn btn-teal" data-goto-asignar="${id}">Asignar</button>
+    </div>
+  `).join("");
+
+  cont.querySelectorAll("[data-goto-asignar]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.dataset.gotoAsignar;
+      eventoSeleccionado = id;
+      const ev = STATE.eventos[id];
+      if(ev) weekState.asignar = startOfWeek(new Date(ev.start));
+      document.querySelector('nav.tabs button[data-tab="asignar"]').click();
+    });
   });
 }
 
