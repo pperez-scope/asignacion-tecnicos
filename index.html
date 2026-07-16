@@ -549,13 +549,16 @@ async function calendarFetch(path, options={}){
 }
 
 async function syncCalendario(claveCal, calInfo){
-  const timeMin = new Date().toISOString();
+  const ahora = new Date();
+  const timeMin = ahora.toISOString();
   const timeMax = new Date(Date.now() + 1000*60*60*24*70).toISOString(); // 10 semanas vista
   const params = new URLSearchParams({ timeMin, timeMax, singleEvents:"true", orderBy:"startTime", maxResults:"250" });
   const data = await calendarFetch(`calendars/${encodeURIComponent(calInfo.calendarId)}/events?${params}`);
   const updates = {};
+  const fetchedIds = new Set();
   (data.items||[]).forEach(ev=>{
     if(ev.status === "cancelled") return;
+    fetchedIds.add(ev.id);
     updates[`eventos/${ev.id}`] = {
       calendario: claveCal,
       calendarId: calInfo.calendarId,
@@ -565,19 +568,33 @@ async function syncCalendario(claveCal, calInfo){
       description: ev.description || ""
     };
   });
+  // Detectar eventos que ya no existen en Calendar dentro de esta misma ventana de fechas
+  // (borrados o cancelados) y quitarlos también de la app, junto con sus asignaciones.
+  let borrados = 0;
+  Object.entries(STATE.eventos).forEach(([id, ev])=>{
+    if(ev.calendario !== claveCal) return;
+    const inicioEvento = new Date(ev.start);
+    if(inicioEvento >= ahora && inicioEvento <= new Date(timeMax) && !fetchedIds.has(id)){
+      updates[`eventos/${id}`] = null;
+      updates[`asignaciones/${id}`] = null;
+      borrados++;
+    }
+  });
   await update(ref(db), updates);
-  return Object.keys(updates).length;
+  return { sincronizados: fetchedIds.size, borrados };
 }
 
 document.getElementById("btnSync").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("syncStatus");
   try{
     statusEl.textContent = "Sincronizando…";
-    let total = 0;
+    let total = 0, borrados = 0;
     for(const [clave, info] of Object.entries(CALENDARIOS)){
-      total += await syncCalendario(clave, info);
+      const r = await syncCalendario(clave, info);
+      total += r.sincronizados;
+      borrados += r.borrados;
     }
-    statusEl.textContent = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos)`;
+    statusEl.textContent = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos${borrados?`, ${borrados} eliminados`:""})`;
     toast("Calendario sincronizado");
   }catch(err){
     console.error(err);
