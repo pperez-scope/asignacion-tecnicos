@@ -128,7 +128,7 @@
   }
   nav.tabs button.active{color:#fff;border-bottom-color:var(--amber);}
 
-  main{padding:16px;max-width:1000px;margin:0 auto;}
+  main{padding:16px;max-width:1300px;margin:0 auto;}
   .card{
     background:var(--surface);
     border:1px solid var(--line);
@@ -158,6 +158,14 @@
     color:var(--teal);
   }
 
+  .segmented{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:fit-content;}
+  .segmented button{
+    background:#fff;border:none;padding:9px 14px;font-size:13px;color:var(--ink-soft);
+    cursor:pointer;font-weight:600;
+  }
+  .segmented button.active{background:var(--navy);color:#fff;}
+  .segmented button+button{border-left:1px solid var(--line);}
+
   input,select,textarea{
     font-family:inherit;
     font-size:14px;
@@ -169,6 +177,57 @@
     width:100%;
   }
   label{font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;font-weight:600;}
+  /* Vista semanal (Sin cubrir / Asignar) */
+  .week-nav{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:14px;gap:10px;
+  }
+  .week-range{
+    font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
+    font-size:17px;color:var(--navy);
+  }
+  .week-grid{
+    display:grid;
+    grid-template-columns:repeat(7,minmax(120px,1fr));
+    gap:8px;
+    overflow-x:auto;
+  }
+  .week-day-col{
+    background:#FBFBF9;
+    border:1px solid var(--line);
+    border-radius:8px;
+    min-height:140px;
+    display:flex;
+    flex-direction:column;
+  }
+  .week-day-col.today{border-color:var(--teal);background:var(--mint);}
+  .week-day-head{
+    font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
+    font-size:12px;color:var(--ink-soft);
+    padding:8px 8px 4px;
+    display:flex;justify-content:space-between;align-items:baseline;
+    border-bottom:1px solid var(--line);
+  }
+  .week-day-head span{font-size:15px;color:var(--navy);font-weight:700;}
+  .week-day-col.today .week-day-head span{color:var(--teal);}
+  .week-day-body{padding:6px;display:flex;flex-direction:column;gap:6px;flex:1;}
+  .week-empty{color:#C6CFCD;font-size:11px;text-align:center;padding:10px 0;}
+  .week-event{
+    border-radius:6px;
+    padding:6px 7px;
+    cursor:pointer;
+    border-left:4px solid var(--amber);
+    background:var(--peach);
+    font-size:11.5px;
+    transition:transform .08s ease;
+  }
+  .week-event:hover{transform:translateY(-1px);}
+  .week-event.cubierto{border-left-color:var(--teal);background:var(--mint);}
+  .week-event.selected{outline:2px solid var(--navy);}
+  .week-event-time{display:block;font-weight:700;color:var(--ink-soft);font-size:10px;}
+  .week-event-title{display:block;font-weight:600;color:var(--ink);line-height:1.25;}
+  .week-event-tecnicos{display:block;font-size:10px;color:var(--teal);margin-top:2px;}
+
   .field{margin-bottom:12px;}
   .row{display:flex;gap:10px;flex-wrap:wrap;}
   .row > .field{flex:1;min-width:140px;}
@@ -245,19 +304,24 @@
 
   /* Vista general por colores */
   .general-table-wrap{overflow-x:auto;}
-  table.general-table{border-collapse:collapse;width:100%;font-size:11px;}
+  table.general-table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:10.5px;}
   table.general-table th, table.general-table td{
     border:1px solid var(--line);
-    padding:4px 5px;
+    padding:3px 2px;
     text-align:center;
-    min-width:34px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
   }
   table.general-table th{background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;}
   table.general-table td.tecnico-name{
-    text-align:left;font-weight:700;white-space:nowrap;position:sticky;left:0;
-    background:#fff;min-width:150px;
+    text-align:left;font-weight:700;position:sticky;left:0;
+    background:#fff;width:118px;font-size:10.5px;
   }
-  .celda-color{width:100%;height:22px;border-radius:4px;display:block;}
+  .celda-color{width:100%;height:20px;border-radius:4px;display:block;}
+  @media (max-width:700px){
+    table.general-table{table-layout:auto;min-width:900px;}
+  }
 
   .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:12px;}
   .legend-item{display:flex;align-items:center;gap:5px;}
@@ -303,7 +367,7 @@
   <!-- SIN CUBRIR -->
   <section id="view-sincubrir">
     <h2 class="section-title">Eventos sin cubrir</h2>
-    <div class="card" id="sincubrirList">
+    <div class="card" id="sincubrirWeek">
       <div class="empty-state"><span class="eyebrow">Sin datos aún</span><p>Sincroniza el calendario desde la pestaña Admin.</p></div>
     </div>
   </section>
@@ -311,11 +375,8 @@
   <!-- ASIGNAR -->
   <section id="view-asignar" class="hidden">
     <h2 class="section-title">Asignar técnicos</h2>
-    <div class="card">
-      <div class="field">
-        <label>Evento</label>
-        <select id="selectEvento"></select>
-      </div>
+    <div class="card" id="asignarWeek"></div>
+    <div class="card hidden" id="asignarDetalleCard">
       <div id="asignarDetalle"></div>
     </div>
   </section>
@@ -330,6 +391,13 @@
           <select id="selectTecnico"></select>
         </div>
         <div class="field">
+          <label>Vista</label>
+          <div class="segmented" id="tecnicoModoSwitch">
+            <button data-modo="semana" class="active">Semana</button>
+            <button data-modo="mes">Mes</button>
+          </div>
+        </div>
+        <div class="field" id="mesTecnicoField">
           <label>Mes</label>
           <input type="month" id="mesTecnico" />
         </div>
@@ -469,6 +537,99 @@ function fmtFecha(iso){
 }
 function isoDate(d){ return d.toISOString().slice(0,10); }
 function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+
+/* Semana (lunes a domingo) */
+function startOfWeek(d){
+  const date = new Date(d);
+  const dow = (date.getDay()+6)%7; // lunes=0
+  date.setDate(date.getDate()-dow);
+  date.setHours(0,0,0,0);
+  return date;
+}
+function fmtWeekRange(start){
+  const end = new Date(start);
+  end.setDate(end.getDate()+6);
+  const optsShort = { day:"2-digit", month:"short" };
+  return `${start.toLocaleDateString("es-ES",optsShort)} – ${end.toLocaleDateString("es-ES",{...optsShort, year:"numeric"})}`;
+}
+function fmtHora(iso){
+  if(!iso || !iso.includes("T")) return "Todo el día";
+  return new Date(iso).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
+}
+
+let weekState = { sincubrir: startOfWeek(new Date()), asignar: startOfWeek(new Date()) };
+let eventoSeleccionado = null;
+
+/* Genera el HTML de una semana tipo iCal con navegación. onlySinCubrir filtra los ya cubiertos. */
+function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
+  const weekStart = weekState[weekKey];
+  const todosEventos = Object.entries(STATE.eventos);
+  const eventosFiltrados = onlySinCubrir
+    ? todosEventos.filter(([id])=> !STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0)
+    : todosEventos;
+
+  const dias = [];
+  for(let i=0;i<7;i++){ const d=new Date(weekStart); d.setDate(d.getDate()+i); dias.push(d); }
+  const hoyIso = isoDate(new Date());
+
+  let html = `<div class="week-nav">
+      <button class="btn btn-ghost" data-week-nav="-1">‹ Semana anterior</button>
+      <div class="week-range">${fmtWeekRange(weekStart)}</div>
+      <button class="btn btn-ghost" data-week-nav="1">Semana siguiente ›</button>
+    </div><div class="week-grid">`;
+
+  dias.forEach(d=>{
+    const diaIso = isoDate(d);
+    const eventosDia = eventosFiltrados
+      .filter(([,ev])=> (ev.start||"").slice(0,10) === diaIso)
+      .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
+    html += `<div class="week-day-col ${diaIso===hoyIso?'today':''}">
+      <div class="week-day-head">${d.toLocaleDateString("es-ES",{weekday:"short"})}<span>${d.getDate()}</span></div>
+      <div class="week-day-body">`;
+    if(eventosDia.length===0){
+      html += `<div class="week-empty">—</div>`;
+    } else {
+      eventosDia.forEach(([id,ev])=>{
+        const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
+        const cubierto = nTec>0;
+        html += `<div class="week-event ${cubierto?'cubierto':''} ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" ${clickable?`data-event-id="${id}"`:""}>
+          <span class="week-event-time">${fmtHora(ev.start)}</span>
+          <span class="week-event-title">${ev.summary}</span>
+          ${cubierto?`<span class="week-event-tecnicos">${nTec} técnico${nTec>1?"s":""}</span>`:""}
+        </div>`;
+      });
+    }
+    html += `</div></div>`;
+  });
+  html += `</div>`;
+
+  const cont = document.getElementById(containerId);
+  cont.innerHTML = html;
+
+  cont.querySelectorAll("[data-week-nav]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const dias = parseInt(btn.dataset.weekNav,10) * 7;
+      const nueva = new Date(weekState[weekKey]);
+      nueva.setDate(nueva.getDate()+dias);
+      weekState[weekKey] = nueva;
+      render();
+    });
+  });
+  if(clickable){
+    cont.querySelectorAll("[data-event-id]").forEach(card=>{
+      card.addEventListener("click", ()=>{
+        eventoSeleccionado = card.dataset.eventId;
+        if(containerId==="sincubrirWeek"){
+          document.querySelector('nav.tabs button[data-tab="asignar"]').click();
+        } else {
+          document.getElementById("asignarDetalleCard").classList.remove("hidden");
+          renderAsignarDetalle(eventoSeleccionado);
+          renderWeekGrid("asignarWeek", "asignar");
+        }
+      });
+    });
+  }
+}
 
 /* ---------- AUTH ---------- */
 document.getElementById("authBox").addEventListener("click", (e)=>{
@@ -641,8 +802,8 @@ async function actualizarDescripcionEvento(eventId){
 }
 
 /* ---------- ASIGNACIÓN ---------- */
-async function asignarTecnico(eventId, tecnicoId, horario, descanso){
-  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descanso: descanso||"" });
+async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos){
+  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos });
   try{ await actualizarDescripcionEvento(eventId); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   toast("Técnico asignado");
@@ -682,47 +843,43 @@ function render(){
 }
 
 function renderSinCubrir(){
-  const cont = document.getElementById("sincubrirList");
-  const eventos = Object.entries(STATE.eventos)
-    .filter(([id])=> !STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0)
-    .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
-
-  if(eventos.length===0){
-    cont.innerHTML = `<div class="empty-state"><span class="eyebrow">Todo cubierto</span><p>No hay eventos próximos sin técnico asignado.</p></div>`;
-    return;
-  }
-  cont.innerHTML = eventos.map(([id, ev])=>`
-    <div class="event-row">
-      <div>
-        <div class="event-fecha">${fmtFecha(ev.start)}</div>
-      </div>
-      <div style="flex:1;">
-        <div class="event-titulo">${ev.summary}</div>
-        <div class="event-cal">${CALENDARIOS[ev.calendario]?.nombre || ev.calendario}</div>
-      </div>
-      <button class="btn btn-teal" data-goto-asignar="${id}">Asignar</button>
-    </div>
-  `).join("");
-
-  cont.querySelectorAll("[data-goto-asignar]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      document.querySelector('nav.tabs button[data-tab="asignar"]').click();
-      document.getElementById("selectEvento").value = btn.dataset.gotoAsignar;
-      renderAsignarDetalle(btn.dataset.gotoAsignar);
-    });
+  renderWeekGrid("sincubrirWeek", "sincubrir", { onlySinCubrir:true, clickable:true });
+  // Al pulsar un evento aquí saltamos a Asignar en la misma semana (ver renderWeekGrid)
+  document.querySelectorAll('#sincubrirWeek [data-event-id]').forEach(card=>{
+    card.addEventListener("click", ()=>{ weekState.asignar = new Date(weekState.sincubrir); }, { once:true, capture:true });
   });
 }
 
 function renderAsignar(){
-  const select = document.getElementById("selectEvento");
-  const eventos = Object.entries(STATE.eventos).sort((a,b)=> new Date(a[1].start)-new Date(b[1].start));
-  const prev = select.value;
-  select.innerHTML = eventos.map(([id,ev])=>
-    `<option value="${id}">${fmtFecha(ev.start)} — ${ev.summary}</option>`
-  ).join("") || `<option value="">No hay eventos sincronizados</option>`;
-  if(prev && STATE.eventos[prev]) select.value = prev;
-  select.onchange = ()=> renderAsignarDetalle(select.value);
-  renderAsignarDetalle(select.value);
+  renderWeekGrid("asignarWeek", "asignar", { onlySinCubrir:false, clickable:true });
+  const detalleCard = document.getElementById("asignarDetalleCard");
+  if(eventoSeleccionado && STATE.eventos[eventoSeleccionado]){
+    detalleCard.classList.remove("hidden");
+    renderAsignarDetalle(eventoSeleccionado);
+  } else {
+    detalleCard.classList.add("hidden");
+  }
+}
+
+/* Duración en horas de un horario "HH:MM–HH:MM" (contempla turnos que cruzan medianoche) */
+function parseDuracionHoras(horarioStr){
+  const m = (horarioStr||"").match(/^(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  const h1=+m[1], mi1=+m[2], h2=+m[3], mi2=+m[4];
+  let inicio = h1*60+mi1, fin = h2*60+mi2;
+  if(fin <= inicio) fin += 24*60;
+  return (fin-inicio)/60;
+}
+
+/* Calcula un horario HH:MM–HH:MM a partir del evento, aplicando minutos de margen antes/después */
+function calcularHorarioConMargenes(evento, minAntes, minDespues){
+  if(!evento.start || !evento.start.includes("T")) return "";
+  const inicio = new Date(evento.start);
+  const fin = new Date(evento.end || evento.start);
+  inicio.setMinutes(inicio.getMinutes() - (minAntes||0));
+  fin.setMinutes(fin.getMinutes() + (minDespues||0));
+  const fmt = (d)=> d.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
+  return `${fmt(inicio)}–${fmt(fin)}`;
 }
 
 function renderAsignarDetalle(eventId){
@@ -732,7 +889,7 @@ function renderAsignarDetalle(eventId){
   const asign = STATE.asignaciones[eventId] || {};
   const asignadosHtml = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre || tid;
-    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.horario?` · ${datos.horario}`:""}
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.horario?` · ${datos.horario}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
       ${isAdmin?`<button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
@@ -740,40 +897,131 @@ function renderAsignarDetalle(eventId){
     .filter(([tid])=> !asign[tid])
     .map(([tid,t])=>`<option value="${tid}">${t.nombre}</option>`).join("");
 
+  const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
+
   cont.innerHTML = `
-    <p class="muted" style="margin-top:0;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)}</p>
+    <p class="muted" style="margin-top:0;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)} · ${fmtHora(evento.start)}–${fmtHora(evento.end)}
+      <button class="btn btn-ghost" id="btnCerrarDetalle" style="float:right;">Cerrar</button>
+    </p>
     <div>${asignadosHtml}</div>
     ${isAdmin ? `
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+    <div class="field">
+      <label>Añadir técnico</label>
+      <select id="nuevoTecnico">${opcionesTecnicos || '<option value="">(todos ya asignados)</option>'}</select>
+    </div>
     <div class="row">
       <div class="field">
-        <label>Añadir técnico</label>
-        <select id="nuevoTecnico">${opcionesTecnicos || '<option value="">(todos ya asignados)</option>'}</select>
+        <label>Montaje/preparación antes (min)</label>
+        <input type="number" id="nuevoMontajeAntes" value="0" min="0" step="15">
       </div>
       <div class="field">
-        <label>Horario</label>
-        <input type="text" id="nuevoHorario" placeholder="09:00–18:00">
-      </div>
-      <div class="field">
-        <label>Descanso</label>
-        <input type="text" id="nuevoDescanso" placeholder="14:00–15:00">
+        <label>Desmontaje/edición después (min)</label>
+        <input type="number" id="nuevoDesmontajeDespues" value="0" min="0" step="15">
       </div>
     </div>
+    <div class="row">
+      <div class="field">
+        <label>Horario (se calcula solo, puedes ajustarlo a mano)</label>
+        <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
+      </div>
+    </div>
+    <div class="row" style="align-items:flex-end;">
+      <div class="field" style="max-width:180px;">
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" id="nuevoDescansoActivo" style="width:auto;">
+          Aplicar descanso
+        </label>
+      </div>
+      <div class="field" style="max-width:160px;">
+        <label>Minutos de descanso</label>
+        <input type="number" id="nuevoDescansoMinutos" value="30" min="0" step="5">
+      </div>
+    </div>
+    <p class="muted" id="descansoAutoHint" style="margin-top:-6px;"></p>
     <button class="btn btn-amber" id="btnAsignar">Asignar a este evento</button>
+    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+    <button class="btn btn-danger" id="btnEliminarEvento">Eliminar evento (app y Calendar)</button>
+    <button class="btn btn-ghost" id="btnQuitarSoloApp">Solo quitar de la app</button>
+    <p class="muted">"Eliminar evento" lo borra también en Google Calendar, sin notificar a nadie. "Solo quitar de la app" es para cuando ya lo has borrado tú en Calendar y aquí no se ha actualizado todavía.</p>
     ` : `<p class="muted">Inicia sesión como admin para modificar asignaciones.</p>`}
   `;
+
+  document.getElementById("btnCerrarDetalle").addEventListener("click", ()=>{
+    eventoSeleccionado = null;
+    document.getElementById("asignarDetalleCard").classList.add("hidden");
+  });
+
+  const btnEliminar = document.getElementById("btnEliminarEvento");
+  if(btnEliminar){
+    btnEliminar.addEventListener("click", async ()=>{
+      if(!confirm("¿Eliminar este evento? Se borrará también en Google Calendar (sin avisar a nadie) y no se puede deshacer.")) return;
+      try{
+        await calendarFetch(`calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}?sendUpdates=none`, { method:"DELETE" });
+        await remove(ref(db, `eventos/${eventId}`));
+        await remove(ref(db, `asignaciones/${eventId}`));
+        eventoSeleccionado = null;
+        document.getElementById("asignarDetalleCard").classList.add("hidden");
+        toast("Evento eliminado en la app y en Calendar");
+      }catch(err){
+        toast("No se pudo eliminar: " + err.message);
+      }
+    });
+  }
+  const btnQuitarApp = document.getElementById("btnQuitarSoloApp");
+  if(btnQuitarApp){
+    btnQuitarApp.addEventListener("click", async ()=>{
+      if(!confirm("¿Quitar este evento solo de la app? Esto no borra nada en Google Calendar.")) return;
+      await remove(ref(db, `eventos/${eventId}`));
+      await remove(ref(db, `asignaciones/${eventId}`));
+      eventoSeleccionado = null;
+      document.getElementById("asignarDetalleCard").classList.add("hidden");
+      toast("Evento quitado de la app");
+    });
+  }
 
   cont.querySelectorAll("[data-quitar]").forEach(btn=>{
     btn.addEventListener("click", ()=> desasignarTecnico(eventId, btn.dataset.quitar));
   });
+
+  const inputAntes = document.getElementById("nuevoMontajeAntes");
+  const inputDespues = document.getElementById("nuevoDesmontajeDespues");
+  const inputHorario = document.getElementById("nuevoHorario");
+  const chkDescanso = document.getElementById("nuevoDescansoActivo");
+  const inputMinutos = document.getElementById("nuevoDescansoMinutos");
+  const hintDescanso = document.getElementById("descansoAutoHint");
+
+  const evaluarDescansoAuto = ()=>{
+    const horas = parseDuracionHoras(inputHorario.value);
+    if(horas !== null && horas > 6){
+      chkDescanso.checked = true;
+      hintDescanso.textContent = `El turno dura ${horas.toFixed(1).replace(".0","")} h (más de 6), así que se ha marcado el descanso automáticamente. Puedes desmarcarlo si no aplica.`;
+    } else {
+      chkDescanso.checked = false;
+      hintDescanso.textContent = horas!==null ? `El turno dura ${horas.toFixed(1).replace(".0","")} h. Márcalo a mano si aun así hace falta descanso.` : "";
+    }
+    inputMinutos.disabled = !chkDescanso.checked;
+  };
+  const recalcularHorario = ()=>{
+    const antes = parseInt(inputAntes.value,10) || 0;
+    const despues = parseInt(inputDespues.value,10) || 0;
+    inputHorario.value = calcularHorarioConMargenes(evento, antes, despues);
+    evaluarDescansoAuto();
+  };
+  if(inputAntes) inputAntes.addEventListener("input", recalcularHorario);
+  if(inputDespues) inputDespues.addEventListener("input", recalcularHorario);
+  if(inputHorario) inputHorario.addEventListener("change", evaluarDescansoAuto);
+  if(chkDescanso) chkDescanso.addEventListener("change", ()=>{ inputMinutos.disabled = !chkDescanso.checked; });
+  if(inputHorario) evaluarDescansoAuto();
+
   const btnAsignar = document.getElementById("btnAsignar");
   if(btnAsignar){
     btnAsignar.addEventListener("click", ()=>{
       const tid = document.getElementById("nuevoTecnico").value;
       if(!tid) return;
-      const horario = document.getElementById("nuevoHorario").value;
-      const descanso = document.getElementById("nuevoDescanso").value;
-      asignarTecnico(eventId, tid, horario, descanso);
+      const horario = inputHorario.value;
+      const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
+      asignarTecnico(eventId, tid, horario, descansoMinutos);
     });
   }
 }
@@ -782,9 +1030,14 @@ function eventosDelDia(fechaIso){
   return Object.entries(STATE.eventos).filter(([,ev])=> (ev.start||"").slice(0,10) === fechaIso);
 }
 
+let tecnicoModo = "semana";
+
 function renderVistaTecnico(){
   const selTec = document.getElementById("selectTecnico");
   const mesInput = document.getElementById("mesTecnico");
+  const mesField = document.getElementById("mesTecnicoField");
+  const switchEl = document.getElementById("tecnicoModoSwitch");
+
   if(!selTec.dataset.filled){
     selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
     selTec.dataset.filled = "1";
@@ -793,11 +1046,76 @@ function renderVistaTecnico(){
   if(!mesInput.value) mesInput.value = new Date().toISOString().slice(0,7);
   mesInput.onchange = renderVistaTecnico;
 
+  if(!switchEl.dataset.wired){
+    switchEl.dataset.wired = "1";
+    switchEl.querySelectorAll("button").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        tecnicoModo = btn.dataset.modo;
+        switchEl.querySelectorAll("button").forEach(b=>b.classList.toggle("active", b===btn));
+        renderVistaTecnico();
+      });
+    });
+  }
+  mesField.classList.toggle("hidden", tecnicoModo!=="mes");
+
   const tecnicoId = selTec.value;
-  const [year, month] = mesInput.value.split("-").map(Number);
   const grid = document.getElementById("tecnicoGrid");
   if(!tecnicoId){ grid.innerHTML = `<p class="muted">Carga la lista de técnicos desde Admin.</p>`; return; }
 
+  if(tecnicoModo === "semana") renderTecnicoSemana(tecnicoId, grid);
+  else renderTecnicoMes(tecnicoId, mesInput.value, grid);
+}
+
+function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
+  const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
+  const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
+  let cls = "day-cell " + extraClass;
+  let contenido = "";
+  if(ausencia){
+    cls += ` ausencia-${ausencia.tipo}`;
+    contenido = `<div class="tag">${AUSENCIA_LABELS[ausencia.tipo]}</div>`;
+  } else if(eventosDia.length){
+    cls += " tiene-evento";
+    contenido = eventosDia.map(([id,ev])=>{
+      const datos = STATE.asignaciones[id][tecnicoId];
+      return `<div class="tag cliente-tag">${ev.summary}</div>${datos.horario?`<span class="horario-tag">${datos.horario}</span>`:""}${datos.descansoMinutos?`<span class="horario-tag">Descanso ${datos.descansoMinutos} min</span>`:""}`;
+    }).join("");
+  }
+  return { cls, contenido };
+}
+
+function renderTecnicoSemana(tecnicoId, grid){
+  if(!weekState.tecnico) weekState.tecnico = startOfWeek(new Date());
+  const weekStart = weekState.tecnico;
+  const dias = [];
+  for(let i=0;i<7;i++){ const d=new Date(weekStart); d.setDate(d.getDate()+i); dias.push(d); }
+
+  let html = `<div class="week-nav">
+      <button class="btn btn-ghost" data-tec-week-nav="-1">‹ Semana anterior</button>
+      <div class="week-range">${fmtWeekRange(weekStart)}</div>
+      <button class="btn btn-ghost" data-tec-week-nav="1">Semana siguiente ›</button>
+    </div><div class="month-grid" style="grid-template-columns:repeat(7,1fr);">`;
+  ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
+  dias.forEach(d=>{
+    const fechaIso = isoDate(d);
+    const { cls, contenido } = celdaDiaTecnico(tecnicoId, fechaIso);
+    html += `<div class="${cls}" style="min-height:110px;"><div class="day-num">${d.getDate()}</div>${contenido}</div>`;
+  });
+  html += `</div>`;
+  grid.innerHTML = html;
+
+  grid.querySelectorAll("[data-tec-week-nav]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const nueva = new Date(weekState.tecnico);
+      nueva.setDate(nueva.getDate() + parseInt(btn.dataset.tecWeekNav,10)*7);
+      weekState.tecnico = nueva;
+      renderVistaTecnico();
+    });
+  });
+}
+
+function renderTecnicoMes(tecnicoId, mesValue, grid){
+  const [year, month] = mesValue.split("-").map(Number);
   const diasEnMes = new Date(year, month, 0).getDate();
   const primerDiaSemana = (new Date(year, month-1, 1).getDay() + 6) % 7; // lunes=0
   let html = `<div class="month-grid">`;
@@ -806,20 +1124,7 @@ function renderVistaTecnico(){
 
   for(let day=1; day<=diasEnMes; day++){
     const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-    const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
-    const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
-    let cls = "day-cell";
-    let contenido = "";
-    if(ausencia){
-      cls += ` ausencia-${ausencia.tipo}`;
-      contenido = `<div class="tag">${AUSENCIA_LABELS[ausencia.tipo]}</div>`;
-    } else if(eventosDia.length){
-      cls += " tiene-evento";
-      contenido = eventosDia.map(([id,ev])=>{
-        const datos = STATE.asignaciones[id][tecnicoId];
-        return `<div class="tag cliente-tag">${ev.summary}</div>${datos.horario?`<span class="horario-tag">${datos.horario}</span>`:""}`;
-      }).join("");
-    }
+    const { cls, contenido } = celdaDiaTecnico(tecnicoId, fechaIso);
     html += `<div class="${cls}"><div class="day-num">${day}</div>${contenido}</div>`;
   }
   html += `</div>`;
