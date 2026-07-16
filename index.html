@@ -436,7 +436,7 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/calendar.events");
-provider.setCustomParameters({ login_hint: ADMIN_EMAILS[0] });
+provider.setCustomParameters({ login_hint: ADMIN_EMAILS[0], prompt: "consent" });
 
 let currentUser = null;
 let accessToken = null;
@@ -480,6 +480,10 @@ async function doLogin(){
   try{
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
+    if(!credential || !credential.accessToken){
+      toast("Login correcto, pero Google no concedió el permiso de Calendar. Vuelve a intentarlo y marca la casilla de Calendar si aparece.");
+      return;
+    }
     accessToken = credential.accessToken;
     toast("Conectado con Google Calendar");
   }catch(err){
