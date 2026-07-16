@@ -619,7 +619,12 @@ function fmtFecha(iso){
   const d = new Date(iso);
   return d.toLocaleDateString("es-ES", { weekday:"short", day:"2-digit", month:"short" });
 }
-function isoDate(d){ return d.toISOString().slice(0,10); }
+function isoDate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
 function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
 
 /* Semana (lunes a domingo) */
@@ -984,7 +989,7 @@ function renderAsignar(){
       });
     });
   }
-  if(!mesInput.value) mesInput.value = new Date().toISOString().slice(0,7);
+  if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
   mesInput.onchange = render;
   mesField.classList.toggle("hidden", asignacionesModo!=="mes");
 
@@ -1223,7 +1228,7 @@ function renderVistaTecnico(){
     selTec.dataset.filled = "1";
     selTec.onchange = renderVistaTecnico;
   }
-  if(!mesInput.value) mesInput.value = new Date().toISOString().slice(0,7);
+  if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
   mesInput.onchange = renderVistaTecnico;
 
   if(!switchEl.dataset.wired){
@@ -1414,7 +1419,7 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
 
 function renderVistaGeneral(){
   const mesInput = document.getElementById("mesGeneral");
-  if(!mesInput.value) mesInput.value = new Date().toISOString().slice(0,7);
+  if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
   mesInput.onchange = renderVistaGeneral;
   const [year, month] = mesInput.value.split("-").map(Number);
   const diasEnMes = new Date(year, month, 0).getDate();
