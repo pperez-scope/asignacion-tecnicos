@@ -196,7 +196,7 @@
     background:#FBFBF9;
     border:1px solid var(--line);
     border-radius:8px;
-    min-height:140px;
+    min-height:420px;
     display:flex;
     flex-direction:column;
   }
@@ -316,7 +316,8 @@
   table.general-table th{background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;}
   table.general-table td.tecnico-name{
     text-align:left;font-weight:700;position:sticky;left:0;
-    background:#fff;width:118px;font-size:10.5px;
+    background:#fff;width:168px;font-size:10.5px;
+    white-space:normal;overflow:visible;text-overflow:clip;line-height:1.2;
   }
   .celda-color{width:100%;height:20px;border-radius:4px;display:block;}
   @media (max-width:700px){
@@ -375,6 +376,21 @@
   <!-- ASIGNACIONES -->
   <section id="view-asignar" class="hidden">
     <h2 class="section-title">Asignaciones</h2>
+    <div class="card">
+      <div class="row" style="align-items:flex-end;">
+        <div class="field">
+          <label>Vista</label>
+          <div class="segmented" id="asignacionesModoSwitch">
+            <button data-modo="semana" class="active">Semana</button>
+            <button data-modo="mes">Mes</button>
+          </div>
+        </div>
+        <div class="field hidden" id="mesAsignacionesField">
+          <label>Mes</label>
+          <input type="month" id="mesAsignaciones" />
+        </div>
+      </div>
+    </div>
     <div class="card" id="asignarWeek"></div>
     <div class="card hidden" id="asignarDetalleCard">
       <div id="asignarDetalle"></div>
@@ -870,14 +886,43 @@ function renderSinCubrir(){
       const id = btn.dataset.gotoAsignar;
       eventoSeleccionado = id;
       const ev = STATE.eventos[id];
-      if(ev) weekState.asignar = startOfWeek(new Date(ev.start));
+      if(ev){
+        weekState.asignar = startOfWeek(new Date(ev.start));
+        const mesInput = document.getElementById("mesAsignaciones");
+        if(mesInput) mesInput.value = ev.start.slice(0,7);
+      }
       document.querySelector('nav.tabs button[data-tab="asignar"]').click();
     });
   });
 }
 
+let asignacionesModo = "semana";
+
 function renderAsignar(){
-  renderWeekGrid("asignarWeek", "asignar", { onlySinCubrir:false, clickable:true });
+  const switchEl = document.getElementById("asignacionesModoSwitch");
+  const mesField = document.getElementById("mesAsignacionesField");
+  const mesInput = document.getElementById("mesAsignaciones");
+
+  if(!switchEl.dataset.wired){
+    switchEl.dataset.wired = "1";
+    switchEl.querySelectorAll("button").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        asignacionesModo = btn.dataset.modo;
+        switchEl.querySelectorAll("button").forEach(b=>b.classList.toggle("active", b===btn));
+        render();
+      });
+    });
+  }
+  if(!mesInput.value) mesInput.value = new Date().toISOString().slice(0,7);
+  mesInput.onchange = render;
+  mesField.classList.toggle("hidden", asignacionesModo!=="mes");
+
+  if(asignacionesModo==="semana"){
+    renderWeekGrid("asignarWeek", "asignar", { onlySinCubrir:false, clickable:true });
+  } else {
+    renderAsignarMes(mesInput.value);
+  }
+
   const detalleCard = document.getElementById("asignarDetalleCard");
   if(eventoSeleccionado && STATE.eventos[eventoSeleccionado]){
     detalleCard.classList.remove("hidden");
@@ -885,6 +930,41 @@ function renderAsignar(){
   } else {
     detalleCard.classList.add("hidden");
   }
+}
+
+function renderAsignarMes(mesValue){
+  const [year, month] = mesValue.split("-").map(Number);
+  const diasEnMes = new Date(year, month, 0).getDate();
+  const primerDiaSemana = (new Date(year, month-1, 1).getDay() + 6) % 7; // lunes=0
+  let html = `<div class="month-grid">`;
+  ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
+  for(let i=0;i<primerDiaSemana;i++) html += `<div></div>`;
+
+  for(let day=1; day<=diasEnMes; day++){
+    const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    const eventosDia = Object.entries(STATE.eventos)
+      .filter(([,ev])=> (ev.start||"").slice(0,10) === fechaIso)
+      .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
+    const contenido = eventosDia.map(([id,ev])=>{
+      const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
+      const cubierto = nTec>0;
+      return `<div class="week-event ${cubierto?"cubierto":""} ${eventoSeleccionado===id?"selected":""}" data-event-id="${id}" style="margin-bottom:3px;">
+        <span class="week-event-time">${fmtHora(ev.start)}</span>
+        <span class="week-event-title">${ev.summary}</span>
+      </div>`;
+    }).join("");
+    html += `<div class="day-cell" style="min-height:120px;"><div class="day-num">${day}</div>${contenido}</div>`;
+  }
+  html += `</div>`;
+
+  const cont = document.getElementById("asignarWeek");
+  cont.innerHTML = html;
+  cont.querySelectorAll("[data-event-id]").forEach(card=>{
+    card.addEventListener("click", ()=>{
+      eventoSeleccionado = card.dataset.eventId;
+      render();
+    });
+  });
 }
 
 /* Duración en horas de un horario "HH:MM–HH:MM" (contempla turnos que cruzan medianoche) */
