@@ -330,6 +330,12 @@
     color:var(--ink-soft);
     margin-top:3px;
   }
+  .turno-nota{
+    font-size:9.5px;
+    color:var(--ink-soft);
+    margin-top:3px;
+    font-style:italic;
+  }
   .turno-timeline{
     position:relative;
     height:5px;
@@ -905,7 +911,7 @@ async function desasignarTecnico(eventId, tecnicoId){
 }
 
 /* ---------- AUSENCIAS ---------- */
-async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota){
+async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos){
   const updates = {};
   let d = new Date(fechaInicio);
   const fin = new Date(fechaFin || fechaInicio);
@@ -913,6 +919,7 @@ async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota
     const entrada = { tipo };
     if(horario) entrada.horario = horario;
     if(nota) entrada.nota = nota;
+    if(descansoMinutos) entrada.descansoMinutos = descansoMinutos;
     updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = entrada;
     d.setDate(d.getDate()+1);
   }
@@ -1285,7 +1292,8 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
       contenido = `<div class="turno-block" style="border-left-color:${AUSENCIA_COLORS[ausencia.tipo]};">
         <div class="turno-cliente">${AUSENCIA_LABELS[ausencia.tipo]}</div>
         ${ausencia.horario ? `<div class="turno-horario" style="font-size:12px;">${ausencia.horario}</div>` : ""}
-        ${ausencia.nota ? `<div class="turno-descanso">${ausencia.nota}</div>` : ""}
+        ${ausencia.descansoMinutos ? `<div class="turno-descanso">☕ ${ausencia.descansoMinutos} min descanso</div>` : ""}
+        ${ausencia.nota ? `<div class="turno-nota">${ausencia.nota}</div>` : ""}
       </div>`;
     } else {
       contenido = `<div class="tag">${AUSENCIA_LABELS[ausencia.tipo]}</div>`;
@@ -1331,7 +1339,9 @@ function horasDiaTecnico(tecnicoId, fechaIso){
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   if(ausencia){
     if((ausencia.tipo==="oficina" || ausencia.tipo==="manual") && ausencia.horario){
-      return horasDesdeTextoLibre(ausencia.horario);
+      let horas = horasDesdeTextoLibre(ausencia.horario);
+      if(ausencia.descansoMinutos) horas -= ausencia.descansoMinutos/60;
+      return Math.max(0, horas);
     }
     return 0;
   }
@@ -1501,6 +1511,18 @@ function renderAusencias(){
           <input type="text" id="ausHorario" placeholder="09:00–14:00 y 15:00–18:00">
         </div>
       </div>
+      <div class="row hidden" id="ausDescansoRow" style="align-items:flex-end;">
+        <div class="field" style="max-width:180px;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="ausDescansoActivo" style="width:auto;">
+            Aplicar descanso
+          </label>
+        </div>
+        <div class="field" style="max-width:160px;">
+          <label>Minutos de descanso</label>
+          <input type="number" id="ausDescansoMinutos" value="15" min="0" step="5">
+        </div>
+      </div>
       <div class="row hidden" id="ausNotaRow">
         <div class="field">
           <label>Descripción (qué es esta asignación)</label>
@@ -1513,14 +1535,32 @@ function renderAusencias(){
     const horarioRow = document.getElementById("ausHorarioRow");
     const notaRow = document.getElementById("ausNotaRow");
     const horarioInput = document.getElementById("ausHorario");
+    const descansoRow = document.getElementById("ausDescansoRow");
+    const chkDescanso = document.getElementById("ausDescansoActivo");
+    const minutosDescanso = document.getElementById("ausDescansoMinutos");
+
+    const evaluarDescansoAuto = ()=>{
+      const horas = horasDesdeTextoLibre(horarioInput.value);
+      if(horas >= 6){
+        chkDescanso.checked = true;
+        if(!minutosDescanso.value || minutosDescanso.value==="0") minutosDescanso.value = 15;
+      } else {
+        chkDescanso.checked = false;
+      }
+      minutosDescanso.disabled = !chkDescanso.checked;
+    };
     const actualizarCamposTipo = ()=>{
       const tipo = tipoSelect.value;
       const necesitaHorario = tipo==="oficina" || tipo==="manual";
       horarioRow.classList.toggle("hidden", !necesitaHorario);
+      descansoRow.classList.toggle("hidden", !necesitaHorario);
       notaRow.classList.toggle("hidden", tipo!=="manual");
       if(tipo==="oficina" && !horarioInput.value) horarioInput.value = AUSENCIA_HORARIO_DEFECTO.oficina;
+      if(necesitaHorario) evaluarDescansoAuto();
     };
     tipoSelect.addEventListener("change", actualizarCamposTipo);
+    horarioInput.addEventListener("change", evaluarDescansoAuto);
+    chkDescanso.addEventListener("change", ()=>{ minutosDescanso.disabled = !chkDescanso.checked; });
     actualizarCamposTipo();
 
     document.getElementById("btnAddAusencia").addEventListener("click", ()=>{
@@ -1530,8 +1570,9 @@ function renderAusencias(){
       const hasta = document.getElementById("ausHasta").value;
       const horario = (tipo==="oficina"||tipo==="manual") ? horarioInput.value : "";
       const nota = tipo==="manual" ? document.getElementById("ausNota").value : "";
+      const descansoMinutos = ((tipo==="oficina"||tipo==="manual") && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
       if(!tid || !desde) return toast("Falta técnico o fecha");
-      addAusencia(tid, desde, hasta, tipo, horario, nota);
+      addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos);
     });
   } else {
     formCont.innerHTML = `<p class="muted" style="margin:0;">Inicia sesión como administrador para añadir o quitar entradas.</p>`;
@@ -1545,6 +1586,7 @@ function renderAusencias(){
       <div style="flex:1;">
         ${AUSENCIA_LABELS[datos.tipo] || datos.tipo}
         ${datos.horario?` · ${datos.horario}`:""}
+        ${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
         ${datos.nota?` · ${datos.nota}`:""}
       </div>
       ${isAdmin?`<button class="btn btn-ghost" data-del-ausencia="${fecha}">Quitar</button>`:""}
