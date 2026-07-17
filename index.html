@@ -325,6 +325,18 @@
     margin-top:3px;
     line-height:1.25;
   }
+  .turno-tipo{
+    display:inline-block;
+    margin-top:3px;
+    font-size:9px;
+    font-weight:700;
+    letter-spacing:.02em;
+    text-transform:uppercase;
+    color:var(--teal);
+    background:var(--mint);
+    border-radius:4px;
+    padding:1px 5px;
+  }
   .turno-descanso{
     font-size:9.5px;
     color:var(--ink-soft);
@@ -587,6 +599,11 @@ const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB
 const AUSENCIA_COLORS = { libranza:"#B9BFC7", permiso:"#E08A6E", vacaciones:"#6FB3BC", oficina:"#C9A227", manual:"#8F7CC7" };
 const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual" };
 const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
+
+const TIPOS_ASIGNACION = [
+  "VÍDEO","REALIZACIÓN","SONIDO","LUCES","TCO SUPERVISOR","TCO AUDIOVISUAL",
+  "VÍDEO/LUCES","OP. CAM","FOTO","PRODUCCIÓN Y EDICIÓN"
+];
 
 /* ---------- INIT ---------- */
 const app = initializeApp(firebaseConfig);
@@ -880,7 +897,11 @@ async function actualizarDescripcionEvento(eventId){
   const evento = STATE.eventos[eventId];
   if(!evento) return;
   const asign = STATE.asignaciones[eventId] || {};
-  const nombres = Object.keys(asign).map(tid => STATE.tecnicos[tid]?.nombre).filter(Boolean);
+  const nombres = Object.entries(asign).map(([tid,datos])=>{
+    const nombre = STATE.tecnicos[tid]?.nombre;
+    if(!nombre) return null;
+    return datos.tipoAsignacion ? `${nombre} (${datos.tipoAsignacion})` : nombre;
+  }).filter(Boolean);
 
   // Traemos la descripción actual real desde Calendar (por si alguien la editó a mano)
   const actual = await calendarFetch(`calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}`);
@@ -897,8 +918,8 @@ async function actualizarDescripcionEvento(eventId){
 }
 
 /* ---------- ASIGNACIÓN ---------- */
-async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos){
-  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos });
+async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion){
+  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos, tipoAsignacion: tipoAsignacion||"" });
   try{ await actualizarDescripcionEvento(eventId); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   toast("Técnico asignado");
@@ -911,7 +932,7 @@ async function desasignarTecnico(eventId, tecnicoId){
 }
 
 /* ---------- AUSENCIAS ---------- */
-async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos){
+async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos, tipoAsignacion){
   const updates = {};
   let d = new Date(fechaInicio);
   const fin = new Date(fechaFin || fechaInicio);
@@ -920,6 +941,7 @@ async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota
     if(horario) entrada.horario = horario;
     if(nota) entrada.nota = nota;
     if(descansoMinutos) entrada.descansoMinutos = descansoMinutos;
+    if(tipoAsignacion) entrada.tipoAsignacion = tipoAsignacion;
     updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = entrada;
     d.setDate(d.getDate()+1);
   }
@@ -1078,7 +1100,7 @@ function renderAsignarDetalle(eventId){
   const asign = STATE.asignaciones[eventId] || {};
   const asignadosHtml = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre || tid;
-    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.horario?` · ${datos.horario}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
       ${isAdmin?`<button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
@@ -1095,9 +1117,18 @@ function renderAsignarDetalle(eventId){
     <div>${asignadosHtml}</div>
     ${isAdmin ? `
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
-    <div class="field">
-      <label>Añadir técnico</label>
-      <select id="nuevoTecnico">${opcionesTecnicos || '<option value="">(todos ya asignados)</option>'}</select>
+    <div class="row">
+      <div class="field">
+        <label>Añadir técnico</label>
+        <select id="nuevoTecnico">${opcionesTecnicos || '<option value="">(todos ya asignados)</option>'}</select>
+      </div>
+      <div class="field">
+        <label>Tipo de asignación</label>
+        <select id="nuevoTipoAsignacion">
+          <option value="">Selecciona tipo…</option>
+          ${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}
+        </select>
+      </div>
     </div>
     <div class="row">
       <div class="field">
@@ -1208,10 +1239,12 @@ function renderAsignarDetalle(eventId){
   if(btnAsignar){
     btnAsignar.addEventListener("click", ()=>{
       const tid = document.getElementById("nuevoTecnico").value;
+      const tipoAsignacion = document.getElementById("nuevoTipoAsignacion").value;
       if(!tid) return;
+      if(!tipoAsignacion) return toast("Elige el tipo de asignación");
       const horario = inputHorario.value;
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
-      asignarTecnico(eventId, tid, horario, descansoMinutos);
+      asignarTecnico(eventId, tid, horario, descansoMinutos, tipoAsignacion);
     });
   }
 }
@@ -1291,6 +1324,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
     if(ausencia.tipo==="oficina" || ausencia.tipo==="manual"){
       contenido = `<div class="turno-block" style="border-left-color:${AUSENCIA_COLORS[ausencia.tipo]};">
         <div class="turno-cliente">${AUSENCIA_LABELS[ausencia.tipo]}</div>
+        ${ausencia.tipoAsignacion ? `<div class="turno-tipo">${ausencia.tipoAsignacion}</div>` : ""}
         ${ausencia.horario ? `<div class="turno-horario" style="font-size:12px;">${ausencia.horario}</div>` : ""}
         ${ausencia.descansoMinutos ? `<div class="turno-descanso">☕ ${ausencia.descansoMinutos} min descanso</div>` : ""}
         ${ausencia.nota ? `<div class="turno-nota">${ausencia.nota}</div>` : ""}
@@ -1307,6 +1341,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         ${datos.horario ? `<div class="turno-horario">${datos.horario.replace(/[–-]/, " → ")}</div>` : ""}
         ${timelineHTML(rango)}
         <div class="turno-cliente">${ev.summary}</div>
+        ${datos.tipoAsignacion ? `<div class="turno-tipo">${datos.tipoAsignacion}</div>` : ""}
         ${datos.descansoMinutos ? `<div class="turno-descanso">☕ ${datos.descansoMinutos} min descanso</div>` : ""}
       </div>`;
     }).join("");
@@ -1491,7 +1526,7 @@ function renderAusencias(){
           <select id="ausTecnico">${Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("")}</select>
         </div>
         <div class="field">
-          <label>Tipo</label>
+          <label>Categoría</label>
           <select id="ausTipo">
             <option value="libranza">Libranza</option>
             <option value="permiso">Permiso</option>
@@ -1504,6 +1539,15 @@ function renderAusencias(){
       <div class="row">
         <div class="field"><label>Desde</label><input type="date" id="ausDesde"></div>
         <div class="field"><label>Hasta (opcional, si es un solo día déjalo vacío)</label><input type="date" id="ausHasta"></div>
+      </div>
+      <div class="row hidden" id="ausTipoAsignacionRow">
+        <div class="field">
+          <label>Tipo de asignación</label>
+          <select id="ausTipoAsignacion">
+            <option value="">Selecciona tipo…</option>
+            ${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}
+          </select>
+        </div>
       </div>
       <div class="row hidden" id="ausHorarioRow">
         <div class="field">
@@ -1538,6 +1582,8 @@ function renderAusencias(){
     const descansoRow = document.getElementById("ausDescansoRow");
     const chkDescanso = document.getElementById("ausDescansoActivo");
     const minutosDescanso = document.getElementById("ausDescansoMinutos");
+    const tipoAsignacionRow = document.getElementById("ausTipoAsignacionRow");
+    const tipoAsignacionSelect = document.getElementById("ausTipoAsignacion");
 
     const evaluarDescansoAuto = ()=>{
       const horas = horasDesdeTextoLibre(horarioInput.value);
@@ -1554,6 +1600,7 @@ function renderAusencias(){
       const necesitaHorario = tipo==="oficina" || tipo==="manual";
       horarioRow.classList.toggle("hidden", !necesitaHorario);
       descansoRow.classList.toggle("hidden", !necesitaHorario);
+      tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
       notaRow.classList.toggle("hidden", tipo!=="manual");
       if(tipo==="oficina" && !horarioInput.value) horarioInput.value = AUSENCIA_HORARIO_DEFECTO.oficina;
       if(necesitaHorario) evaluarDescansoAuto();
@@ -1571,8 +1618,10 @@ function renderAusencias(){
       const horario = (tipo==="oficina"||tipo==="manual") ? horarioInput.value : "";
       const nota = tipo==="manual" ? document.getElementById("ausNota").value : "";
       const descansoMinutos = ((tipo==="oficina"||tipo==="manual") && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
+      const tipoAsignacion = (tipo==="oficina"||tipo==="manual") ? tipoAsignacionSelect.value : "";
       if(!tid || !desde) return toast("Falta técnico o fecha");
-      addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos);
+      if((tipo==="oficina"||tipo==="manual") && !tipoAsignacion) return toast("Elige el tipo de asignación");
+      addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos, tipoAsignacion);
     });
   } else {
     formCont.innerHTML = `<p class="muted" style="margin:0;">Inicia sesión como administrador para añadir o quitar entradas.</p>`;
@@ -1585,6 +1634,7 @@ function renderAusencias(){
       <div class="event-fecha">${fecha}</div>
       <div style="flex:1;">
         ${AUSENCIA_LABELS[datos.tipo] || datos.tipo}
+        ${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}
         ${datos.horario?` · ${datos.horario}`:""}
         ${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
         ${datos.nota?` · ${datos.nota}`:""}
