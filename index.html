@@ -295,6 +295,7 @@
   .day-cell.ausencia-permiso{background:#FDE7E1;}
   .day-cell.ausencia-vacaciones{background:#DFEEF0;}
   .day-cell.ausencia-oficina{background:#FBF2D9;}
+  .day-cell.ausencia-teletrabajo{background:#DEEAF6;}
   .day-cell.ausencia-manual{background:#EEE9FA;}
   .day-cell .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
 
@@ -632,8 +633,8 @@ const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza so
 const MARKER_END = "--- fin técnicos ---";
 
 const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
-const AUSENCIA_COLORS = { libranza:"#B9BFC7", permiso:"#E08A6E", vacaciones:"#6FB3BC", oficina:"#C9A227", manual:"#8F7CC7" };
-const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual" };
+const AUSENCIA_COLORS = { libranza:"#B9BFC7", permiso:"#E08A6E", vacaciones:"#6FB3BC", oficina:"#C9A227", manual:"#8F7CC7", teletrabajo:"#5C8FBF" };
+const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo" };
 const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
 
 const TIPOS_ASIGNACION = [
@@ -1363,7 +1364,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
   let contenido = "";
   if(ausencia){
     cls += ` ausencia-${ausencia.tipo}`;
-    if(ausencia.tipo==="oficina" || ausencia.tipo==="manual"){
+    if(ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo"){
       contenido = `<div class="turno-block" style="border-left-color:${AUSENCIA_COLORS[ausencia.tipo]};">
         <div class="turno-cliente">${AUSENCIA_LABELS[ausencia.tipo]}</div>
         ${ausencia.tipoAsignacion ? `<div class="turno-tipo">${ausencia.tipoAsignacion}</div>` : ""}
@@ -1415,7 +1416,7 @@ function horasDesdeTextoLibre(str){
 function horasDiaTecnico(tecnicoId, fechaIso){
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   if(ausencia){
-    if((ausencia.tipo==="oficina" || ausencia.tipo==="manual") && ausencia.horario){
+    if((ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo") && ausencia.horario){
       let horas = horasDesdeTextoLibre(ausencia.horario);
       if(ausencia.descansoMinutos) horas -= ausencia.descansoMinutos/60;
       return Math.max(0, horas);
@@ -1577,6 +1578,7 @@ function renderAusencias(){
             <option value="permiso">Permiso</option>
             <option value="vacaciones">Vacaciones</option>
             <option value="oficina">Oficina Scope</option>
+            <option value="teletrabajo">Teletrabajo</option>
             <option value="manual">Asignación manual</option>
           </select>
         </div>
@@ -1642,7 +1644,7 @@ function renderAusencias(){
     };
     const actualizarCamposTipo = ()=>{
       const tipo = tipoSelect.value;
-      const necesitaHorario = tipo==="oficina" || tipo==="manual";
+      const necesitaHorario = tipo==="oficina" || tipo==="manual" || tipo==="teletrabajo";
       horarioRow.classList.toggle("hidden", !necesitaHorario);
       descansoRow.classList.toggle("hidden", !necesitaHorario);
       tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
@@ -1660,12 +1662,13 @@ function renderAusencias(){
       const tipo = tipoSelect.value;
       const desde = document.getElementById("ausDesde").value;
       const hasta = document.getElementById("ausHasta").value;
-      const horario = (tipo==="oficina"||tipo==="manual") ? horarioInput.value : "";
+      const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo";
+      const horario = necesitaHorario ? horarioInput.value : "";
       const nota = tipo==="manual" ? document.getElementById("ausNota").value : "";
-      const descansoMinutos = ((tipo==="oficina"||tipo==="manual") && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
-      const tipoAsignacion = (tipo==="oficina"||tipo==="manual") ? tipoAsignacionSelect.value : "";
+      const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
+      const tipoAsignacion = necesitaHorario ? tipoAsignacionSelect.value : "";
       if(!tid || !desde) return toast("Falta técnico o fecha");
-      if((tipo==="oficina"||tipo==="manual") && !tipoAsignacion) return toast("Elige el tipo de asignación");
+      if(necesitaHorario && !tipoAsignacion) return toast("Elige el tipo de asignación");
       addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos, tipoAsignacion);
     });
   } else {
