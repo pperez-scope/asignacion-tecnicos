@@ -401,8 +401,8 @@
   table.general-table th{background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;}
   table.general-table td.tecnico-name{
     text-align:left;font-weight:700;position:sticky;left:0;
-    background:#fff;width:168px;font-size:10.5px;
-    white-space:normal;overflow:visible;text-overflow:clip;line-height:1.2;
+    background:#fff;width:88px;font-size:10.5px;
+    white-space:nowrap;overflow:visible;text-overflow:clip;line-height:1.2;
   }
   .celda-color{width:100%;height:20px;border-radius:4px;display:block;}
   @media (max-width:700px){
@@ -589,8 +589,44 @@ const CALENDARIOS = {
 const TECNICOS_INICIALES = [
   "Álvaro Caletrio","Helena Trigueros","Carlota Falcó","Maca Cervantes","Marta Muñoz",
   "Laura Rubio","Carlota Guzmán","Simón Rey","Javier López","Emi García","Dani Calzado",
-  "Hugo Ramos","Patricia Pérez de la Manga","Jose Sevilla","Sergio Salas","Juanma Paz"
+  "Hugo Ramos","Patricia Pérez de la Manga","Jose Sevilla","Sergio Salas","Juanma Paz",
+  "Cristina Linaje","Ángela San Martín","Manuel Carbajo","Santiago Alonso","Joan Bardolet",
+  "Joaquín Martín","Irene Álvarez"
 ];
+
+// Orden y nombre corto (sin apellidos) para la vista general, tal como se usa en el cuadrante
+const ORDEN_VISTA_GENERAL = [
+  { nombre:"Cristina Linaje", corto:"CRISTINA" },
+  { nombre:"Manuel Carbajo", corto:"MANUEL" },
+  { nombre:"Juanma Paz", corto:"JUANMA" },
+  { nombre:"Ángela San Martín", corto:"ÁNGELA" },
+  { nombre:"Hugo Ramos", corto:"HUGO" },
+  { nombre:"Sergio Salas", corto:"SERGIO" },
+  { nombre:"Santiago Alonso", corto:"SANTI" },
+  { nombre:"Joan Bardolet", corto:"JOAN" },
+  { nombre:"Jose Sevilla", corto:"JOSÉ" },
+  { nombre:"Maca Cervantes", corto:"MACARENA" },
+  { nombre:"Carlota Guzmán", corto:"CARLOTA G." },
+  { nombre:"Carlota Falcó", corto:"CARLOTA F." },
+  { nombre:"Laura Rubio", corto:"LAURA" },
+  { nombre:"Marta Muñoz", corto:"MARTA" },
+  { nombre:"Patricia Pérez de la Manga", corto:"PATRI" },
+  { nombre:"Simón Rey", corto:"SIMÓN" },
+  { nombre:"Dani Calzado", corto:"DANI" },
+  { nombre:"Emi García", corto:"EMI" },
+  { nombre:"Javier López", corto:"JAVIER" },
+  { nombre:"Álvaro Caletrio", corto:"ÁLVARO" },
+  { nombre:"Helena Trigueros", corto:"HELENA" },
+  { nombre:"Irene Álvarez", corto:"IRENE" },
+  { nombre:"Joaquín Martín", corto:"JOAQUÍN" }
+];
+function nombreCortoGeneral(nombreCompleto){
+  return ORDEN_VISTA_GENERAL.find(e=> e.nombre===nombreCompleto)?.corto || nombreCompleto;
+}
+function ordenGeneralIndex(nombreCompleto){
+  const i = ORDEN_VISTA_GENERAL.findIndex(e=> e.nombre===nombreCompleto);
+  return i===-1 ? 999 : i;
+}
 
 const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza solo) ---";
 const MARKER_END = "--- fin técnicos ---";
@@ -880,16 +916,22 @@ document.getElementById("btnSync").addEventListener("click", async ()=>{
 
 document.getElementById("btnSeedTecnicos").addEventListener("click", async ()=>{
   const snap = await get(ref(db,"tecnicos"));
-  if(snap.exists()){
-    toast("La lista de técnicos ya existe, no se ha modificado.");
+  const existentes = snap.exists() ? snap.val() : {};
+  const updates = {};
+  let nuevos = 0;
+  TECNICOS_INICIALES.forEach(nombre=>{
+    const slug = slugify(nombre);
+    if(!existentes[slug]){
+      updates[`tecnicos/${slug}`] = { nombre };
+      nuevos++;
+    }
+  });
+  if(nuevos===0){
+    toast("Ya están todos cargados, no se ha añadido nadie nuevo.");
     return;
   }
-  const updates = {};
-  TECNICOS_INICIALES.forEach(nombre=>{
-    updates[slugify(nombre)] = { nombre };
-  });
-  await set(ref(db,"tecnicos"), updates);
-  toast("Técnicos cargados");
+  await update(ref(db), updates);
+  toast(`${nuevos} técnico${nuevos>1?"s":""} añadido${nuevos>1?"s":""}`);
 });
 
 /* Actualiza (o inserta) el bloque de técnicos en la descripción del evento en Google Calendar */
@@ -1469,7 +1511,10 @@ function renderVistaGeneral(){
   const [year, month] = mesInput.value.split("-").map(Number);
   const diasEnMes = new Date(year, month, 0).getDate();
 
-  const tecnicosOrdenados = Object.entries(STATE.tecnicos).sort((a,b)=> a[1].nombre.localeCompare(b[1].nombre,"es"));
+  const tecnicosOrdenados = Object.entries(STATE.tecnicos).sort((a,b)=>{
+    const diff = ordenGeneralIndex(a[1].nombre) - ordenGeneralIndex(b[1].nombre);
+    return diff!==0 ? diff : a[1].nombre.localeCompare(b[1].nombre,"es");
+  });
   const clientesUsados = new Set();
 
   let head = `<tr><th>Técnico</th>`;
@@ -1477,7 +1522,7 @@ function renderVistaGeneral(){
   head += `</tr>`;
 
   let rows = tecnicosOrdenados.map(([tid,t])=>{
-    let cells = `<td class="tecnico-name">${t.nombre}</td>`;
+    let cells = `<td class="tecnico-name">${nombreCortoGeneral(t.nombre)}</td>`;
     for(let day=1; day<=diasEnMes; day++){
       const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
       const ausencia = STATE.ausencias[tid]?.[fechaIso];
