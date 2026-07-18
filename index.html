@@ -371,10 +371,13 @@
     background:var(--mint);
     border:1px solid var(--line);
     border-radius:6px;
-    display:flex;align-items:center;justify-content:center;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
     font-family:var(--font-display);font-weight:700;font-size:14px;
     color:var(--teal);min-height:96px;text-align:center;
   }
+  .week-total-cell.excede{background:#FDE7E1;color:var(--danger);}
+  .week-total-max{font-family:var(--font-body);font-weight:600;font-size:9.5px;color:var(--ink-soft);}
+  .week-total-cell.excede .week-total-max{color:var(--danger);}
   .periodo-total-footer{
     text-align:right;
     font-family:var(--font-display);
@@ -383,6 +386,15 @@
     padding:6px 4px 0;
   }
   .periodo-total-footer strong{color:var(--amber);font-size:17px;}
+  .periodo-total-max{font-family:var(--font-body);text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink-soft);}
+  .periodo-total-footer.excede strong{color:var(--danger);}
+  .periodo-total-aviso{
+    display:inline-block;margin-left:8px;
+    background:var(--danger);color:#fff;
+    font-family:var(--font-body);text-transform:none;letter-spacing:0;
+    font-size:11px;font-weight:700;
+    padding:2px 8px;border-radius:999px;
+  }
   .weekday-label{
     text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;
     color:var(--ink-soft);padding-bottom:4px;
@@ -628,6 +640,45 @@ function nombreCortoGeneral(nombreCompleto){
 function ordenGeneralIndex(nombreCompleto){
   const i = ORDEN_VISTA_GENERAL.findIndex(e=> e.nombre===nombreCompleto);
   return i===-1 ? 999 : i;
+}
+
+/* ---------- Jornada y calendario laboral (Comunidad de Madrid) ---------- */
+const HORAS_SEMANALES_DEFECTO = 40;
+const HORAS_SEMANALES_ESPECIAL = {
+  "Cristina Linaje": 35,
+  "Patricia Pérez de la Manga": 30
+};
+function horasSemanalesTecnico(nombre){
+  return HORAS_SEMANALES_ESPECIAL[nombre] ?? HORAS_SEMANALES_DEFECTO;
+}
+
+// Festivos autonómicos/nacionales de la Comunidad de Madrid (Decreto 75/2025) más los 2 festivos
+// locales de Madrid capital (San Isidro 15/mayo y Virgen de la Almudena 9/noviembre).
+const FESTIVOS_MADRID = {
+  2026: ["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02",
+         "2026-05-15","2026-08-15","2026-10-12","2026-11-02","2026-11-09","2026-12-07",
+         "2026-12-08","2026-12-25"]
+};
+function esDiaLaborable(date){
+  const dow = date.getDay(); // 0=domingo, 6=sábado
+  if(dow===0 || dow===6) return false;
+  const festivosAno = FESTIVOS_MADRID[date.getFullYear()] || [];
+  return !festivosAno.includes(isoDate(date));
+}
+function diasLaborablesEnRango(inicio, fin){
+  let count = 0;
+  let d = new Date(inicio);
+  while(d <= fin){
+    if(esDiaLaborable(d)) count++;
+    d.setDate(d.getDate()+1);
+  }
+  return count;
+}
+/* Máximo de horas para un técnico en un rango de fechas, proporcional a los días laborables
+   (calendario laboral de la Comunidad de Madrid) dentro de ese rango. */
+function horasMaximasTecnico(nombre, inicio, fin){
+  const dias = diasLaborablesEnRango(inicio, fin);
+  return horasSemanalesTecnico(nombre) / 5 * dias;
 }
 
 const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza solo) ---";
@@ -1433,12 +1484,21 @@ function fmtHoras(h){
   const r = Math.round(h*10)/10;
   return `${r}`.replace(".0","") + " h";
 }
+/* Pie de "Total X: Y h / Z h", con aviso visual si se supera el máximo de la jornada */
+function footerTotalHTML(etiqueta, total, maximo){
+  const totalTxt = total>0 ? fmtHoras(total) : "0 h";
+  const maxTxt = maximo>0 ? fmtHoras(maximo) : "—";
+  const excede = maximo>0 && total > maximo + 0.01;
+  return `<div class="periodo-total-footer ${excede?'excede':''}">${etiqueta}: <strong>${totalTxt}</strong> <span class="periodo-total-max">/ ${maxTxt} jornada</span>${excede?`<span class="periodo-total-aviso">Supera la jornada</span>`:""}</div>`;
+}
 
 function renderTecnicoSemana(tecnicoId, grid){
   if(!weekState.tecnico) weekState.tecnico = startOfWeek(new Date());
   const weekStart = weekState.tecnico;
   const dias = [];
   for(let i=0;i<7;i++){ const d=new Date(weekStart); d.setDate(d.getDate()+i); dias.push(d); }
+  const weekEnd = dias[6];
+  const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
 
   let totalSemana = 0;
   let html = `<div class="week-nav">
@@ -1454,8 +1514,8 @@ function renderTecnicoSemana(tecnicoId, grid){
     totalSemana += horasDia;
     html += `<div class="${cls}" style="min-height:110px;"><div class="day-num">${d.getDate()}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
   });
-  html += `</div>
-    <div class="periodo-total-footer">Total semana: <strong>${totalSemana>0?fmtHoras(totalSemana):"0 h"}</strong></div>`;
+  const maxSemana = horasMaximasTecnico(nombreTecnico, weekStart, weekEnd);
+  html += `</div>` + footerTotalHTML("Total semana", totalSemana, maxSemana);
   grid.innerHTML = html;
 
   grid.querySelectorAll("[data-tec-week-nav]").forEach(btn=>{
@@ -1472,6 +1532,7 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
   const [year, month] = mesValue.split("-").map(Number);
   const diasEnMes = new Date(year, month, 0).getDate();
   const primerDiaSemana = (new Date(year, month-1, 1).getDay() + 6) % 7; // lunes=0
+  const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
 
   // Agrupamos los días en semanas (lunes-domingo) para poder mostrar un total por semana
   const semanas = [];
@@ -1489,6 +1550,7 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
 
   semanas.forEach(semana=>{
     let totalSemana = 0;
+    let primerDiaReal = null, ultimoDiaReal = null;
     html += `<div class="month-grid" style="grid-template-columns:repeat(7,1fr) 84px;margin-bottom:4px;">`;
     semana.forEach(day=>{
       if(day===null){ html += `<div></div>`; return; }
@@ -1496,13 +1558,20 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
       const { cls, contenido } = celdaDiaTecnico(tecnicoId, fechaIso);
       const horasDia = horasDiaTecnico(tecnicoId, fechaIso);
       totalSemana += horasDia;
+      if(primerDiaReal===null) primerDiaReal = new Date(year, month-1, day);
+      ultimoDiaReal = new Date(year, month-1, day);
       html += `<div class="${cls}"><div class="day-num">${day}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
     });
     totalMes += totalSemana;
-    html += `<div class="week-total-cell">${totalSemana>0?fmtHoras(totalSemana):"—"}</div>`;
+    const maxSemanaFila = primerDiaReal ? horasMaximasTecnico(nombreTecnico, primerDiaReal, ultimoDiaReal) : 0;
+    const excedeFila = maxSemanaFila>0 && totalSemana > maxSemanaFila + 0.01;
+    html += `<div class="week-total-cell ${excedeFila?'excede':''}">${totalSemana>0?fmtHoras(totalSemana):"—"}${maxSemanaFila>0?`<span class="week-total-max">/ ${fmtHoras(maxSemanaFila)}</span>`:""}</div>`;
     html += `</div>`;
   });
-  html += `<div class="periodo-total-footer">Total del mes: <strong>${totalMes>0?fmtHoras(totalMes):"0 h"}</strong></div>`;
+  const inicioMes = new Date(year, month-1, 1);
+  const finMes = new Date(year, month-1, diasEnMes);
+  const maxMes = horasMaximasTecnico(nombreTecnico, inicioMes, finMes);
+  html += footerTotalHTML("Total del mes", totalMes, maxMes);
   grid.innerHTML = html;
 }
 
