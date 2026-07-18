@@ -179,12 +179,17 @@
   label{font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;font-weight:600;}
   textarea{font-family:inherit;resize:vertical;}
   .tecnico-checklist{
-    display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
-    gap:4px 10px;
-    max-height:180px;overflow-y:auto;
+    display:flex;flex-direction:column;gap:4px;
+    max-height:260px;overflow-y:auto;
     border:1px solid var(--line);border-radius:7px;
     padding:8px 10px;background:#fff;
   }
+  .check-item-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:3px 0;
+  }
+  .check-item-row .check-item{flex:1;min-width:0;}
+  .check-item-row select{width:150px;flex-shrink:0;padding:6px 8px;font-size:12.5px;}
   .check-item{
     display:flex;align-items:center;gap:6px;
     font-size:13px;font-weight:400;color:var(--ink);
@@ -720,7 +725,7 @@ const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
 
 const TIPOS_ASIGNACION = [
   "VÍDEO","REALIZACIÓN","SONIDO","LUCES","TCO SUPERVISOR","TCO AUDIOVISUAL",
-  "VÍDEO/LUCES","OP. CAM","FOTO","PRODUCCIÓN Y EDICIÓN"
+  "VÍDEO/LUCES","OP. CAM","FOTO","PRODUCCIÓN","EDICIÓN","ADMINISTRACIÓN"
 ];
 
 /* ---------- INIT ---------- */
@@ -1047,9 +1052,9 @@ async function guardarNotaEvento(eventId, texto){
   await update(ref(db, `eventos/${eventId}`), { notaInterna: texto||"" });
   toast("Descripción guardada");
 }
-async function asignarVariosTecnicos(eventId, tids, horario, descansoMinutos, tipoAsignacion){
+async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos){
   const updates = {};
-  tids.forEach(tid=>{
+  asignacionesLista.forEach(({tid, tipoAsignacion})=>{
     updates[`asignaciones/${eventId}/${tid}`] = {
       horario: horario||"",
       descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
@@ -1059,7 +1064,8 @@ async function asignarVariosTecnicos(eventId, tids, horario, descansoMinutos, ti
   await update(ref(db), updates);
   try{ await actualizarDescripcionEvento(eventId); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
-  toast(`${tids.length} técnico${tids.length>1?"s":""} asignado${tids.length>1?"s":""}`);
+  const n = asignacionesLista.length;
+  toast(`${n} técnico${n>1?"s":""} asignado${n>1?"s":""}`);
 }
 async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion){
   await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos, tipoAsignacion: tipoAsignacion||"" });
@@ -1300,25 +1306,20 @@ function renderAsignarDetalle(eventId){
     `;
   } else {
     const tecnicosDisponibles = Object.entries(STATE.tecnicos).filter(([tid])=> !asign[tid]);
+    const opcionesTipo = `<option value="">Tipo…</option>${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}`;
     const checklistHtml = tecnicosDisponibles.length
       ? `<div class="tecnico-checklist">${tecnicosDisponibles.map(([tid,t])=>
-          `<label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}"> ${t.nombre}</label>`
+          `<div class="check-item-row">
+            <label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}" data-tid="${tid}"> ${t.nombre}</label>
+            <select class="sel-tipo-nuevo" data-tid="${tid}" disabled>${opcionesTipo}</select>
+          </div>`
         ).join("")}</div>`
       : `<p class="muted">Todos los técnicos ya están asignados a este evento.</p>`;
     const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
     formAsignacionHtml = `
       <div class="field">
-        <label>Añadir técnico(s) — puedes marcar varios a la vez</label>
+        <label>Añadir técnico(s) — marca varios y elige el tipo de asignación de cada uno</label>
         ${checklistHtml}
-      </div>
-      <div class="row">
-        <div class="field">
-          <label>Tipo de asignación</label>
-          <select id="nuevoTipoAsignacion">
-            <option value="">Selecciona tipo…</option>
-            ${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}
-          </select>
-        </div>
       </div>
       <div class="row">
         <div class="field">
@@ -1332,7 +1333,7 @@ function renderAsignarDetalle(eventId){
       </div>
       <div class="row">
         <div class="field">
-          <label>Horario (se calcula solo, puedes ajustarlo a mano)</label>
+          <label>Horario (se calcula solo, puedes ajustarlo a mano; se aplica igual a todos los marcados)</label>
           <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
         </div>
       </div>
@@ -1495,16 +1496,28 @@ function renderAsignarDetalle(eventId){
   if(chkDescanso) chkDescanso.addEventListener("change", ()=>{ inputMinutos.disabled = !chkDescanso.checked; });
   if(inputHorario) evaluarDescansoAuto();
 
+  cont.querySelectorAll(".chk-nuevo-tecnico").forEach(chk=>{
+    chk.addEventListener("change", ()=>{
+      const sel = cont.querySelector(`.sel-tipo-nuevo[data-tid="${chk.dataset.tid}"]`);
+      if(sel){ sel.disabled = !chk.checked; if(!chk.checked) sel.value = ""; }
+    });
+  });
+
   const btnAsignar = document.getElementById("btnAsignar");
   if(btnAsignar){
     btnAsignar.addEventListener("click", ()=>{
-      const seleccionados = Array.from(cont.querySelectorAll(".chk-nuevo-tecnico:checked")).map(el=>el.value);
-      const tipoAsignacion = document.getElementById("nuevoTipoAsignacion").value;
-      if(seleccionados.length===0) return toast("Marca al menos un técnico");
-      if(!tipoAsignacion) return toast("Elige el tipo de asignación");
+      const marcados = Array.from(cont.querySelectorAll(".chk-nuevo-tecnico:checked"));
+      if(marcados.length===0) return toast("Marca al menos un técnico");
+      const asignacionesLista = [];
+      for(const chk of marcados){
+        const sel = cont.querySelector(`.sel-tipo-nuevo[data-tid="${chk.dataset.tid}"]`);
+        const tipoAsignacion = sel ? sel.value : "";
+        if(!tipoAsignacion) return toast("Elige el tipo de asignación para cada técnico marcado");
+        asignacionesLista.push({ tid: chk.dataset.tid, tipoAsignacion });
+      }
       const horario = inputHorario.value;
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
-      asignarVariosTecnicos(eventId, seleccionados, horario, descansoMinutos, tipoAsignacion);
+      asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos);
     });
   }
 }
