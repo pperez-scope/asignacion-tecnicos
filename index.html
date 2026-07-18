@@ -177,6 +177,20 @@
     width:100%;
   }
   label{font-size:12px;color:var(--ink-soft);display:block;margin-bottom:4px;font-weight:600;}
+  textarea{font-family:inherit;resize:vertical;}
+  .tecnico-checklist{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+    gap:4px 10px;
+    max-height:180px;overflow-y:auto;
+    border:1px solid var(--line);border-radius:7px;
+    padding:8px 10px;background:#fff;
+  }
+  .check-item{
+    display:flex;align-items:center;gap:6px;
+    font-size:13px;font-weight:400;color:var(--ink);
+    margin-bottom:0;cursor:pointer;
+  }
+  .check-item input{width:auto;}
   /* Vista semanal (Sin cubrir / Asignar) */
   .week-nav{
     display:flex;align-items:center;justify-content:space-between;
@@ -775,6 +789,7 @@ function fmtHora(iso){
 
 let weekState = { sincubrir: startOfWeek(new Date()), asignar: startOfWeek(new Date()) };
 let eventoSeleccionado = null;
+let editandoTecnicoId = null;
 
 /* Genera el HTML de una semana tipo iCal con navegación. onlySinCubrir filtra los ya cubiertos. */
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
@@ -834,7 +849,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
   if(clickable){
     cont.querySelectorAll("[data-event-id]").forEach(card=>{
       card.addEventListener("click", ()=>{
-        eventoSeleccionado = card.dataset.eventId;
+        eventoSeleccionado = card.dataset.eventId; editandoTecnicoId = null;
         if(containerId==="sincubrirWeek"){
           document.querySelector('nav.tabs button[data-tab="asignar"]').click();
         } else {
@@ -1028,6 +1043,24 @@ async function actualizarDescripcionEvento(eventId){
 }
 
 /* ---------- ASIGNACIÓN ---------- */
+async function guardarNotaEvento(eventId, texto){
+  await update(ref(db, `eventos/${eventId}`), { notaInterna: texto||"" });
+  toast("Descripción guardada");
+}
+async function asignarVariosTecnicos(eventId, tids, horario, descansoMinutos, tipoAsignacion){
+  const updates = {};
+  tids.forEach(tid=>{
+    updates[`asignaciones/${eventId}/${tid}`] = {
+      horario: horario||"",
+      descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
+      tipoAsignacion: tipoAsignacion||""
+    };
+  });
+  await update(ref(db), updates);
+  try{ await actualizarDescripcionEvento(eventId); }
+  catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
+  toast(`${tids.length} técnico${tids.length>1?"s":""} asignado${tids.length>1?"s":""}`);
+}
 async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion){
   await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos, tipoAsignacion: tipoAsignacion||"" });
   try{ await actualizarDescripcionEvento(eventId); }
@@ -1099,7 +1132,7 @@ function renderSinCubrir(){
   cont.querySelectorAll("[data-goto-asignar]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const id = btn.dataset.gotoAsignar;
-      eventoSeleccionado = id;
+      eventoSeleccionado = id; editandoTecnicoId = null;
       const ev = STATE.eventos[id];
       if(ev){
         weekState.asignar = startOfWeek(new Date(ev.start));
@@ -1176,7 +1209,7 @@ function renderAsignarMes(mesValue){
   cont.innerHTML = html;
   cont.querySelectorAll("[data-event-id]").forEach(card=>{
     card.addEventListener("click", ()=>{
-      eventoSeleccionado = card.dataset.eventId;
+      eventoSeleccionado = card.dataset.eventId; editandoTecnicoId = null;
       render();
     });
   });
@@ -1208,68 +1241,133 @@ function renderAsignarDetalle(eventId){
   const evento = STATE.eventos[eventId];
   if(!evento){ cont.innerHTML = ""; return; }
   const asign = STATE.asignaciones[eventId] || {};
+
   const asignadosHtml = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre || tid;
     return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
-      ${isAdmin?`<button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
+      ${isAdmin?`<button data-editar="${tid}" title="Editar">✎</button><button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
-  const opcionesTecnicos = Object.entries(STATE.tecnicos)
-    .filter(([tid])=> !asign[tid])
-    .map(([tid,t])=>`<option value="${tid}">${t.nombre}</option>`).join("");
+  const notaActual = evento.notaInterna || "";
 
-  const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
+  const editando = editandoTecnicoId && asign[editandoTecnicoId];
+  let formAsignacionHtml = "";
+
+  if(editando){
+    const datos = asign[editandoTecnicoId];
+    const nombreEdit = STATE.tecnicos[editandoTecnicoId]?.nombre || editandoTecnicoId;
+    formAsignacionHtml = `
+      <p style="margin:0 0 8px;font-weight:700;color:var(--teal);">Editando asignación de ${nombreEdit}</p>
+      <div class="row">
+        <div class="field">
+          <label>Tipo de asignación</label>
+          <select id="editTipoAsignacion">
+            <option value="">Selecciona tipo…</option>
+            ${TIPOS_ASIGNACION.map(t=>`<option value="${t}" ${t===datos.tipoAsignacion?"selected":""}>${t}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Montaje/preparación antes (min)</label>
+          <input type="number" id="editMontajeAntes" value="0" min="0" step="15">
+        </div>
+        <div class="field">
+          <label>Desmontaje/edición después (min)</label>
+          <input type="number" id="editDesmontajeDespues" value="0" min="0" step="15">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Horario</label>
+          <input type="text" id="editHorario" placeholder="09:00–18:00" value="${datos.horario||""}">
+        </div>
+      </div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="max-width:180px;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="editDescansoActivo" style="width:auto;" ${datos.descansoMinutos?"checked":""}>
+            Aplicar descanso
+          </label>
+        </div>
+        <div class="field" style="max-width:160px;">
+          <label>Minutos de descanso</label>
+          <input type="number" id="editDescansoMinutos" value="${datos.descansoMinutos||15}" min="0" step="5" ${datos.descansoMinutos?"":"disabled"}>
+        </div>
+      </div>
+      <button class="btn btn-amber" id="btnGuardarEdicion">Guardar cambios</button>
+      <button class="btn btn-ghost" id="btnCancelarEdicion">Cancelar</button>
+    `;
+  } else {
+    const tecnicosDisponibles = Object.entries(STATE.tecnicos).filter(([tid])=> !asign[tid]);
+    const checklistHtml = tecnicosDisponibles.length
+      ? `<div class="tecnico-checklist">${tecnicosDisponibles.map(([tid,t])=>
+          `<label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}"> ${t.nombre}</label>`
+        ).join("")}</div>`
+      : `<p class="muted">Todos los técnicos ya están asignados a este evento.</p>`;
+    const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
+    formAsignacionHtml = `
+      <div class="field">
+        <label>Añadir técnico(s) — puedes marcar varios a la vez</label>
+        ${checklistHtml}
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Tipo de asignación</label>
+          <select id="nuevoTipoAsignacion">
+            <option value="">Selecciona tipo…</option>
+            ${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Montaje/preparación antes (min)</label>
+          <input type="number" id="nuevoMontajeAntes" value="0" min="0" step="15">
+        </div>
+        <div class="field">
+          <label>Desmontaje/edición después (min)</label>
+          <input type="number" id="nuevoDesmontajeDespues" value="0" min="0" step="15">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Horario (se calcula solo, puedes ajustarlo a mano)</label>
+          <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
+        </div>
+      </div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field" style="max-width:180px;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="nuevoDescansoActivo" style="width:auto;">
+            Aplicar descanso
+          </label>
+        </div>
+        <div class="field" style="max-width:160px;">
+          <label>Minutos de descanso</label>
+          <input type="number" id="nuevoDescansoMinutos" value="15" min="0" step="5">
+        </div>
+      </div>
+      <p class="muted" id="descansoAutoHint" style="margin-top:-6px;"></p>
+      <button class="btn btn-amber" id="btnAsignar">Asignar seleccionados</button>
+    `;
+  }
 
   cont.innerHTML = `
     <p class="muted" style="margin-top:0;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)} · ${fmtHora(evento.start)}–${fmtHora(evento.end)}
       <button class="btn btn-ghost" id="btnCerrarDetalle" style="float:right;">Cerrar</button>
     </p>
+    <div class="field">
+      <label>Descripción del evento</label>
+      <textarea id="notaEvento" rows="2" placeholder="Notas internas: material especial, punto de encuentro, contacto in situ…" ${isAdmin?"":"disabled"}>${notaActual}</textarea>
+      ${isAdmin?`<button class="btn btn-ghost" id="btnGuardarNota" style="margin-top:6px;">Guardar descripción</button>`:""}
+      <p class="muted" style="margin-top:4px;">Esta nota es solo para uso interno de la app; no se envía a Google Calendar.</p>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
     <div>${asignadosHtml}</div>
     ${isAdmin ? `
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
-    <div class="row">
-      <div class="field">
-        <label>Añadir técnico</label>
-        <select id="nuevoTecnico">${opcionesTecnicos || '<option value="">(todos ya asignados)</option>'}</select>
-      </div>
-      <div class="field">
-        <label>Tipo de asignación</label>
-        <select id="nuevoTipoAsignacion">
-          <option value="">Selecciona tipo…</option>
-          ${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}
-        </select>
-      </div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <label>Montaje/preparación antes (min)</label>
-        <input type="number" id="nuevoMontajeAntes" value="0" min="0" step="15">
-      </div>
-      <div class="field">
-        <label>Desmontaje/edición después (min)</label>
-        <input type="number" id="nuevoDesmontajeDespues" value="0" min="0" step="15">
-      </div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <label>Horario (se calcula solo, puedes ajustarlo a mano)</label>
-        <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
-      </div>
-    </div>
-    <div class="row" style="align-items:flex-end;">
-      <div class="field" style="max-width:180px;">
-        <label style="display:flex;align-items:center;gap:6px;">
-          <input type="checkbox" id="nuevoDescansoActivo" style="width:auto;">
-          Aplicar descanso
-        </label>
-      </div>
-      <div class="field" style="max-width:160px;">
-        <label>Minutos de descanso</label>
-        <input type="number" id="nuevoDescansoMinutos" value="15" min="0" step="5">
-      </div>
-    </div>
-    <p class="muted" id="descansoAutoHint" style="margin-top:-6px;"></p>
-    <button class="btn btn-amber" id="btnAsignar">Asignar a este evento</button>
+    ${formAsignacionHtml}
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
     <button class="btn btn-danger" id="btnEliminarEvento">Eliminar evento (app y Calendar)</button>
     <button class="btn btn-ghost" id="btnQuitarSoloApp">Solo quitar de la app</button>
@@ -1279,8 +1377,16 @@ function renderAsignarDetalle(eventId){
 
   document.getElementById("btnCerrarDetalle").addEventListener("click", ()=>{
     eventoSeleccionado = null;
+    editandoTecnicoId = null;
     document.getElementById("asignarDetalleCard").classList.add("hidden");
   });
+
+  const btnGuardarNota = document.getElementById("btnGuardarNota");
+  if(btnGuardarNota){
+    btnGuardarNota.addEventListener("click", ()=>{
+      guardarNotaEvento(eventId, document.getElementById("notaEvento").value);
+    });
+  }
 
   const btnEliminar = document.getElementById("btnEliminarEvento");
   if(btnEliminar){
@@ -1290,7 +1396,7 @@ function renderAsignarDetalle(eventId){
         await calendarFetch(`calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}?sendUpdates=none`, { method:"DELETE" });
         await remove(ref(db, `eventos/${eventId}`));
         await remove(ref(db, `asignaciones/${eventId}`));
-        eventoSeleccionado = null;
+        eventoSeleccionado = null; editandoTecnicoId = null;
         document.getElementById("asignarDetalleCard").classList.add("hidden");
         toast("Evento eliminado en la app y en Calendar");
       }catch(err){
@@ -1304,15 +1410,59 @@ function renderAsignarDetalle(eventId){
       if(!confirm("¿Quitar este evento solo de la app? Esto no borra nada en Google Calendar.")) return;
       await remove(ref(db, `eventos/${eventId}`));
       await remove(ref(db, `asignaciones/${eventId}`));
-      eventoSeleccionado = null;
+      eventoSeleccionado = null; editandoTecnicoId = null;
       document.getElementById("asignarDetalleCard").classList.add("hidden");
       toast("Evento quitado de la app");
     });
   }
 
   cont.querySelectorAll("[data-quitar]").forEach(btn=>{
-    btn.addEventListener("click", ()=> desasignarTecnico(eventId, btn.dataset.quitar));
+    btn.addEventListener("click", ()=>{
+      if(editandoTecnicoId===btn.dataset.quitar) editandoTecnicoId = null;
+      desasignarTecnico(eventId, btn.dataset.quitar);
+    });
   });
+  cont.querySelectorAll("[data-editar]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      editandoTecnicoId = btn.dataset.editar;
+      renderAsignarDetalle(eventId);
+    });
+  });
+
+  if(editando){
+    const btnCancelar = document.getElementById("btnCancelarEdicion");
+    if(btnCancelar) btnCancelar.addEventListener("click", ()=>{
+      editandoTecnicoId = null;
+      renderAsignarDetalle(eventId);
+    });
+
+    const inputAntes = document.getElementById("editMontajeAntes");
+    const inputDespues = document.getElementById("editDesmontajeDespues");
+    const inputHorario = document.getElementById("editHorario");
+    const chkDescanso = document.getElementById("editDescansoActivo");
+    const inputMinutos = document.getElementById("editDescansoMinutos");
+    const recalcular = ()=>{
+      const antes = parseInt(inputAntes.value,10) || 0;
+      const despues = parseInt(inputDespues.value,10) || 0;
+      inputHorario.value = calcularHorarioConMargenes(evento, antes, despues);
+    };
+    if(inputAntes) inputAntes.addEventListener("input", recalcular);
+    if(inputDespues) inputDespues.addEventListener("input", recalcular);
+    if(chkDescanso) chkDescanso.addEventListener("change", ()=>{ inputMinutos.disabled = !chkDescanso.checked; });
+
+    const btnGuardarEdicion = document.getElementById("btnGuardarEdicion");
+    if(btnGuardarEdicion){
+      btnGuardarEdicion.addEventListener("click", ()=>{
+        const tipoAsignacion = document.getElementById("editTipoAsignacion").value;
+        if(!tipoAsignacion) return toast("Elige el tipo de asignación");
+        const horario = inputHorario.value;
+        const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
+        asignarTecnico(eventId, editandoTecnicoId, horario, descansoMinutos, tipoAsignacion);
+        editandoTecnicoId = null;
+      });
+    }
+    return;
+  }
 
   const inputAntes = document.getElementById("nuevoMontajeAntes");
   const inputDespues = document.getElementById("nuevoDesmontajeDespues");
@@ -1329,7 +1479,7 @@ function renderAsignarDetalle(eventId){
       hintDescanso.textContent = `El turno dura ${horas.toFixed(1).replace(".0","")} h (6 o más), así que se ha marcado un descanso de 15 min automáticamente. Puedes desmarcarlo o ajustar los minutos si no aplica.`;
     } else {
       chkDescanso.checked = false;
-      hintDescanso.textContent = horas!==null ? `El turno dura ${horas.toFixed(1).replace(".0","")} h. Márcalo a mano si aun así hace falta descanso.` : "";
+      hintDescanso.textContent = horas!==null ? `El turno dura ${horas.toFixed(1).replace(".0","")} h. Márcalo a mano si aún así hace falta descanso.` : "";
     }
     inputMinutos.disabled = !chkDescanso.checked;
   };
@@ -1348,13 +1498,13 @@ function renderAsignarDetalle(eventId){
   const btnAsignar = document.getElementById("btnAsignar");
   if(btnAsignar){
     btnAsignar.addEventListener("click", ()=>{
-      const tid = document.getElementById("nuevoTecnico").value;
+      const seleccionados = Array.from(cont.querySelectorAll(".chk-nuevo-tecnico:checked")).map(el=>el.value);
       const tipoAsignacion = document.getElementById("nuevoTipoAsignacion").value;
-      if(!tid) return;
+      if(seleccionados.length===0) return toast("Marca al menos un técnico");
       if(!tipoAsignacion) return toast("Elige el tipo de asignación");
       const horario = inputHorario.value;
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
-      asignarTecnico(eventId, tid, horario, descansoMinutos, tipoAsignacion);
+      asignarVariosTecnicos(eventId, seleccionados, horario, descansoMinutos, tipoAsignacion);
     });
   }
 }
