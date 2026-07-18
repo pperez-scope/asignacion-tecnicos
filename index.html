@@ -412,11 +412,26 @@
     white-space:nowrap;
   }
   table.general-table th{background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;}
+  table.general-table th.th-tecnico{position:sticky;left:0;z-index:2;}
+  table.general-table th .th-letra{
+    display:block;font-size:8.5px;font-weight:700;letter-spacing:.04em;
+    color:#B7C7C4;text-transform:uppercase;line-height:1.3;
+  }
+  table.general-table th .th-num{display:block;font-size:11px;line-height:1.3;}
+  table.general-table th.col-finde{background:var(--navy-2);}
+  table.general-table th.col-finde .th-letra{color:var(--amber);}
   table.general-table td.tecnico-name{
     text-align:left;font-weight:700;position:sticky;left:0;
     background:#fff;width:88px;font-size:10.5px;
     white-space:nowrap;overflow:visible;text-overflow:clip;line-height:1.2;
+    border-right:2px solid var(--navy);
   }
+  table.general-table tr.fila-par td{background:#F4F6F5;}
+  table.general-table tr.fila-par td.tecnico-name{background:#EAEFED;}
+  table.general-table tr:hover td{background:#FCF0DE;}
+  table.general-table tr:hover td.tecnico-name{background:var(--amber);color:#fff;}
+  table.general-table td.col-finde{background:#E2E2E2;}
+  table.general-table tr.fila-par td.col-finde{background:#D6D6D6;}
   .celda-color{width:100%;height:20px;border-radius:4px;display:block;}
   @media (max-width:700px){
     table.general-table{table-layout:auto;min-width:900px;}
@@ -685,7 +700,7 @@ const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza so
 const MARKER_END = "--- fin técnicos ---";
 
 const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
-const AUSENCIA_COLORS = { libranza:"#B9BFC7", permiso:"#E08A6E", vacaciones:"#6FB3BC", oficina:"#C9A227", manual:"#8F7CC7", teletrabajo:"#5C8FBF" };
+const AUSENCIA_COLORS = { libranza:"#A9D8B0", permiso:"#E08A6E", vacaciones:"#E8A79C", oficina:"#C9A227", manual:"#8F7CC7", teletrabajo:"#5C8FBF" };
 const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo" };
 const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
 
@@ -1587,15 +1602,22 @@ function renderVistaGeneral(){
     return diff!==0 ? diff : a[1].nombre.localeCompare(b[1].nombre,"es");
   });
   const clientesUsados = new Set();
+  const LETRAS_DIA = ["L","M","X","J","V","S","D"];
 
-  let head = `<tr><th>Técnico</th>`;
-  for(let day=1; day<=diasEnMes; day++) head += `<th>${day}</th>`;
+  let head = `<tr><th class="th-tecnico">Técnico</th>`;
+  for(let day=1; day<=diasEnMes; day++){
+    const d = new Date(year, month-1, day);
+    const noLaborable = !esDiaLaborable(d);
+    head += `<th class="${noLaborable?'col-finde':''}"><span class="th-letra">${LETRAS_DIA[(d.getDay()+6)%7]}</span><span class="th-num">${day}</span></th>`;
+  }
   head += `</tr>`;
 
-  let rows = tecnicosOrdenados.map(([tid,t])=>{
+  let rows = tecnicosOrdenados.map(([tid,t], idx)=>{
     let cells = `<td class="tecnico-name">${nombreCortoGeneral(t.nombre)}</td>`;
     for(let day=1; day<=diasEnMes; day++){
       const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const d = new Date(year, month-1, day);
+      const noLaborable = !esDiaLaborable(d);
       const ausencia = STATE.ausencias[tid]?.[fechaIso];
       const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
       let color = "transparent";
@@ -1608,10 +1630,13 @@ function renderVistaGeneral(){
         color = colorFor(ev.calendario);
         clientesUsados.add(ev.calendario);
         titulo = ev.summary;
+      } else if(noLaborable){
+        color = "#DCDCDC";
+        titulo = "Festivo / fin de semana";
       }
-      cells += `<td title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
+      cells += `<td class="${noLaborable?'col-finde':''}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
     }
-    return `<tr>${cells}</tr>`;
+    return `<tr class="${idx%2===1?'fila-par':''}">${cells}</tr>`;
   }).join("");
 
   document.getElementById("generalTable").innerHTML = `<table class="general-table"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
