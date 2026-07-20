@@ -744,6 +744,8 @@ const OFICINA_DEFECTO_ESPECIAL = {
   "Cristina Linaje": "09:00–16:00",
   "Patricia Pérez de la Manga": "09:00–15:00"
 };
+// Personal externo/esporádico: no se les asigna Oficina Scope por defecto.
+const SIN_OFICINA_DEFECTO = ["Joaquín Martín","Irene Álvarez","Laura Rubio"];
 function horarioOficinaDefecto(nombreTecnico){
   return OFICINA_DEFECTO_ESPECIAL[nombreTecnico] || AUSENCIA_HORARIO_DEFECTO.oficina;
 }
@@ -1670,8 +1672,9 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         ${datos.descansoMinutos ? `<div class="turno-descanso">☕ ${datos.descansoMinutos} min descanso</div>` : ""}
       </div>`;
     }).join("");
-  } else if(esDiaLaborable(parseIsoLocal(fechaIso))){
+  } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(STATE.tecnicos[tecnicoId]?.nombre || "")){
     // Sin ausencia ni evento: por defecto está en Oficina Scope entre semana
+    // (excepto personal externo/esporádico, que no tiene nada asignado por defecto)
     cls += " ausencia-oficina";
     const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
     contenido = `<div class="turno-block turno-defecto" style="border-left-color:${AUSENCIA_COLORS.oficina};">
@@ -1720,6 +1723,7 @@ function horasDiaTecnico(tecnicoId, fechaIso){
   }
   if(esDiaLaborable(parseIsoLocal(fechaIso))){
     const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
+    if(SIN_OFICINA_DEFECTO.includes(nombreTecnico)) return 0;
     return horasDesdeTextoLibre(horarioOficinaDefecto(nombreTecnico));
   }
   return 0;
@@ -1863,7 +1867,7 @@ function renderVistaGeneral(){
       } else if(noLaborable){
         color = "#DCDCDC";
         titulo = "Festivo / fin de semana";
-      } else {
+      } else if(!SIN_OFICINA_DEFECTO.includes(t.nombre)){
         color = AUSENCIA_COLORS.oficina;
         titulo = "Oficina Scope (por defecto)";
       }
