@@ -339,6 +339,12 @@
     box-shadow:0 1px 2px rgba(0,0,0,.05);
   }
   .turno-block:last-child{margin-bottom:0;}
+  .turno-block.turno-defecto{
+    border-left-style:dashed;
+    background:#FDFBF4;
+    box-shadow:none;
+    opacity:.85;
+  }
   .turno-horario{
     font-family:var(--font-display);
     font-weight:700;
@@ -731,6 +737,20 @@ const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB
 const AUSENCIA_COLORS = { libranza:"#A9D8B0", permiso:"#E08A6E", vacaciones:"#E8A79C", oficina:"#C9A227", manual:"#8F7CC7", teletrabajo:"#5C8FBF" };
 const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo" };
 const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
+
+// Horario de Oficina Scope que se asigna por defecto entre semana cuando el técnico no tiene
+// ningún evento, ausencia u otra asignación explícita ese día.
+const OFICINA_DEFECTO_ESPECIAL = {
+  "Cristina Linaje": "09:00–16:00",
+  "Patricia Pérez de la Manga": "09:00–15:00"
+};
+function horarioOficinaDefecto(nombreTecnico){
+  return OFICINA_DEFECTO_ESPECIAL[nombreTecnico] || AUSENCIA_HORARIO_DEFECTO.oficina;
+}
+function parseIsoLocal(fechaIso){
+  const [y,m,d] = fechaIso.split("-").map(Number);
+  return new Date(y, m-1, d);
+}
 
 const TIPOS_ASIGNACION = [
   "VÍDEO","REALIZACIÓN","SONIDO","LUCES","TCO SUPERVISOR","TCO AUDIOVISUAL",
@@ -1650,6 +1670,15 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         ${datos.descansoMinutos ? `<div class="turno-descanso">☕ ${datos.descansoMinutos} min descanso</div>` : ""}
       </div>`;
     }).join("");
+  } else if(esDiaLaborable(parseIsoLocal(fechaIso))){
+    // Sin ausencia ni evento: por defecto está en Oficina Scope entre semana
+    cls += " ausencia-oficina";
+    const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
+    contenido = `<div class="turno-block turno-defecto" style="border-left-color:${AUSENCIA_COLORS.oficina};">
+      <div class="turno-cliente">Oficina Scope</div>
+      <div class="turno-horario" style="font-size:12px;">${horarioOficinaDefecto(nombreTecnico)}</div>
+      <div class="turno-nota">Por defecto</div>
+    </div>`;
   }
   return { cls, contenido };
 }
@@ -1685,9 +1714,15 @@ function horasDiaTecnico(tecnicoId, fechaIso){
     }
     return 0;
   }
-  return eventosDelDia(fechaIso)
-    .filter(([id])=> STATE.asignaciones[id]?.[tecnicoId])
-    .reduce((sum,[id])=> sum + duracionTurnoHoras(STATE.asignaciones[id][tecnicoId]), 0);
+  const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
+  if(eventosDia.length){
+    return eventosDia.reduce((sum,[id])=> sum + duracionTurnoHoras(STATE.asignaciones[id][tecnicoId]), 0);
+  }
+  if(esDiaLaborable(parseIsoLocal(fechaIso))){
+    const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
+    return horasDesdeTextoLibre(horarioOficinaDefecto(nombreTecnico));
+  }
+  return 0;
 }
 function fmtHoras(h){
   if(!h || h<=0) return "";
@@ -1828,6 +1863,9 @@ function renderVistaGeneral(){
       } else if(noLaborable){
         color = "#DCDCDC";
         titulo = "Festivo / fin de semana";
+      } else {
+        color = AUSENCIA_COLORS.oficina;
+        titulo = "Oficina Scope (por defecto)";
       }
       cells += `<td class="${noLaborable?'col-finde':''}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
     }
