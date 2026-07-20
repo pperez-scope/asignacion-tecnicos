@@ -1305,15 +1305,20 @@ function renderAsignarDetalle(eventId){
       <button class="btn btn-ghost" id="btnCancelarEdicion">Cancelar</button>
     `;
   } else {
-    const tecnicosDisponibles = Object.entries(STATE.tecnicos).filter(([tid])=> !asign[tid]);
+    const tecnicosDisponibles = Object.entries(STATE.tecnicos)
+      .filter(([tid])=> !asign[tid])
+      .sort((a,b)=> a[1].nombre.localeCompare(b[1].nombre,"es"));
     const opcionesTipo = `<option value="">Tipo…</option>${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}`;
+    const normalizar = (s)=> s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
     const checklistHtml = tecnicosDisponibles.length
-      ? `<div class="tecnico-checklist">${tecnicosDisponibles.map(([tid,t])=>
-          `<div class="check-item-row">
+      ? `<input type="text" id="buscadorTecnicos" placeholder="Buscar técnico por nombre…" autocomplete="off" style="margin-bottom:6px;">
+         <div class="tecnico-checklist" id="tecnicoChecklist">${tecnicosDisponibles.map(([tid,t])=>
+          `<div class="check-item-row" data-nombre="${normalizar(t.nombre)}">
             <label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}" data-tid="${tid}"> ${t.nombre}</label>
             <select class="sel-tipo-nuevo" data-tid="${tid}" disabled>${opcionesTipo}</select>
           </div>`
-        ).join("")}</div>`
+        ).join("")}</div>
+        <p class="muted" id="checklistVacio" style="display:none;margin:6px 0 0;">Ningún técnico coincide con la búsqueda.</p>`
       : `<p class="muted">Todos los técnicos ya están asignados a este evento.</p>`;
     const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
     formAsignacionHtml = `
@@ -1502,6 +1507,23 @@ function renderAsignarDetalle(eventId){
       if(sel){ sel.disabled = !chk.checked; if(!chk.checked) sel.value = ""; }
     });
   });
+
+  const buscador = document.getElementById("buscadorTecnicos");
+  if(buscador){
+    const normalizar = (s)=> s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+    buscador.addEventListener("input", ()=>{
+      const term = normalizar(buscador.value.trim());
+      const filas = cont.querySelectorAll("#tecnicoChecklist .check-item-row");
+      let visibles = 0;
+      filas.forEach(fila=>{
+        const coincide = fila.dataset.nombre.includes(term);
+        fila.style.display = coincide ? "flex" : "none";
+        if(coincide) visibles++;
+      });
+      const vacio = document.getElementById("checklistVacio");
+      if(vacio) vacio.style.display = visibles===0 ? "block" : "none";
+    });
+  }
 
   const btnAsignar = document.getElementById("btnAsignar");
   if(btnAsignar){
