@@ -383,6 +383,12 @@
     margin-top:3px;
     font-style:italic;
   }
+  .turno-lugar{
+    font-size:9.5px;
+    font-weight:600;
+    color:var(--navy);
+    margin-top:3px;
+  }
   .turno-timeline{
     position:relative;
     height:5px;
@@ -754,6 +760,15 @@ function parseIsoLocal(fechaIso){
   return new Date(y, m-1, d);
 }
 
+// Lugar de trabajo por defecto y salas disponibles según el calendario de origen del evento.
+const LUGAR_DEFECTO_CALENDARIO = { juanmarch: "Fundación Juan March", ateneo: "Ateneo" };
+const SALAS_CALENDARIO = {
+  juanmarch: ["Auditorio","Salón Azul","Sala de ensayos","Sala exposiciones","Hall -1","Hall 2ª","Cafetería","Aula 2ª","Pecera"],
+  ateneo: ["Cátedra Mayor","Biblioteca","Pecera Biblioteca","Pérez Galdós","Ramón y Cajal","Úbeda","Larra","Cacharrería","Anselma","Cantina"]
+};
+function lugarDefectoCalendario(claveCal){ return LUGAR_DEFECTO_CALENDARIO[claveCal] || ""; }
+function salasDeCalendario(claveCal){ return SALAS_CALENDARIO[claveCal] || []; }
+
 const TIPOS_ASIGNACION = [
   "VÍDEO","REALIZACIÓN","SONIDO","LUCES","TCO SUPERVISOR","TCO AUDIOVISUAL",
   "VÍDEO/LUCES","OP. CAM","FOTO","PRODUCCIÓN","EDICIÓN","ADMINISTRACIÓN"
@@ -1083,13 +1098,15 @@ async function guardarNotaEvento(eventId, texto){
   await update(ref(db, `eventos/${eventId}`), { notaInterna: texto||"" });
   toast("Descripción guardada");
 }
-async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos){
+async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala){
   const updates = {};
   asignacionesLista.forEach(({tid, tipoAsignacion})=>{
     updates[`asignaciones/${eventId}/${tid}`] = {
       horario: horario||"",
       descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
-      tipoAsignacion: tipoAsignacion||""
+      tipoAsignacion: tipoAsignacion||"",
+      lugar: lugar||"",
+      sala: sala||""
     };
   });
   await update(ref(db), updates);
@@ -1098,8 +1115,14 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
   const n = asignacionesLista.length;
   toast(`${n} técnico${n>1?"s":""} asignado${n>1?"s":""}`);
 }
-async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion){
-  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), { horario: horario||"", descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos, tipoAsignacion: tipoAsignacion||"" });
+async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala){
+  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), {
+    horario: horario||"",
+    descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
+    tipoAsignacion: tipoAsignacion||"",
+    lugar: lugar||"",
+    sala: sala||""
+  });
   try{ await actualizarDescripcionEvento(eventId); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   toast("Técnico asignado");
@@ -1112,7 +1135,7 @@ async function desasignarTecnico(eventId, tecnicoId){
 }
 
 /* ---------- AUSENCIAS ---------- */
-async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos, tipoAsignacion){
+async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala){
   const updates = {};
   let d = new Date(fechaInicio);
   const fin = new Date(fechaFin || fechaInicio);
@@ -1122,6 +1145,8 @@ async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota
     if(nota) entrada.nota = nota;
     if(descansoMinutos) entrada.descansoMinutos = descansoMinutos;
     if(tipoAsignacion) entrada.tipoAsignacion = tipoAsignacion;
+    if(lugar) entrada.lugar = lugar;
+    if(sala) entrada.sala = sala;
     updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = entrada;
     d.setDate(d.getDate()+1);
   }
@@ -1282,7 +1307,8 @@ function renderAsignarDetalle(eventId){
 
   const asignadosHtml = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre || tid;
-    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
+    const lugarTxt = [datos.lugar, datos.sala].filter(Boolean).join(" · ");
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
       ${isAdmin?`<button data-editar="${tid}" title="Editar">✎</button><button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
@@ -1294,6 +1320,8 @@ function renderAsignarDetalle(eventId){
   if(editando){
     const datos = asign[editandoTecnicoId];
     const nombreEdit = STATE.tecnicos[editandoTecnicoId]?.nombre || editandoTecnicoId;
+    const salasEdit = salasDeCalendario(evento.calendario);
+    const lugarEditDefecto = datos.lugar || lugarDefectoCalendario(evento.calendario);
     formAsignacionHtml = `
       <p style="margin:0 0 8px;font-weight:700;color:var(--teal);">Editando asignación de ${nombreEdit}</p>
       <div class="row">
@@ -1303,6 +1331,19 @@ function renderAsignarDetalle(eventId){
             <option value="">Selecciona tipo…</option>
             ${TIPOS_ASIGNACION.map(t=>`<option value="${t}" ${t===datos.tipoAsignacion?"selected":""}>${t}</option>`).join("")}
           </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Lugar de trabajo</label>
+          <input type="text" id="editLugar" value="${lugarEditDefecto}">
+        </div>
+        <div class="field">
+          <label>Sala</label>
+          ${salasEdit.length ? `<select id="editSala">
+            <option value="">Sin sala</option>
+            ${salasEdit.map(s=>`<option value="${s}" ${s===datos.sala?"selected":""}>${s}</option>`).join("")}
+          </select>` : `<input type="text" id="editSala" value="${datos.sala||""}" placeholder="Si aplica">`}
         </div>
       </div>
       <div class="row">
@@ -1353,10 +1394,25 @@ function renderAsignarDetalle(eventId){
         <p class="muted" id="checklistVacio" style="display:none;margin:6px 0 0;">Ningún técnico coincide con la búsqueda.</p>`
       : `<p class="muted">Todos los técnicos ya están asignados a este evento.</p>`;
     const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
+    const salasNuevo = salasDeCalendario(evento.calendario);
+    const lugarNuevoDefecto = lugarDefectoCalendario(evento.calendario);
     formAsignacionHtml = `
       <div class="field">
         <label>Añadir técnico(s) — marca varios y elige el tipo de asignación de cada uno</label>
         ${checklistHtml}
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Lugar de trabajo</label>
+          <input type="text" id="nuevoLugar" value="${lugarNuevoDefecto}">
+        </div>
+        <div class="field">
+          <label>Sala</label>
+          ${salasNuevo.length ? `<select id="nuevoSala">
+            <option value="">Sin sala</option>
+            ${salasNuevo.map(s=>`<option value="${s}">${s}</option>`).join("")}
+          </select>` : `<input type="text" id="nuevoSala" placeholder="Si aplica">`}
+        </div>
       </div>
       <div class="row">
         <div class="field">
@@ -1495,7 +1551,9 @@ function renderAsignarDetalle(eventId){
         if(!tipoAsignacion) return toast("Elige el tipo de asignación");
         const horario = inputHorario.value;
         const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
-        asignarTecnico(eventId, editandoTecnicoId, horario, descansoMinutos, tipoAsignacion);
+        const lugar = document.getElementById("editLugar").value;
+        const sala = document.getElementById("editSala").value;
+        asignarTecnico(eventId, editandoTecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala);
         editandoTecnicoId = null;
       });
     }
@@ -1571,7 +1629,9 @@ function renderAsignarDetalle(eventId){
       }
       const horario = inputHorario.value;
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
-      asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos);
+      const lugar = document.getElementById("nuevoLugar")?.value || "";
+      const sala = document.getElementById("nuevoSala")?.value || "";
+      asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala);
     });
   }
 }
@@ -1646,6 +1706,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   let cls = "day-cell " + extraClass;
   let contenido = "";
+  const lugarSalaHTML = (lugar, sala) => (lugar||sala) ? `<div class="turno-lugar">📍 ${[lugar,sala].filter(Boolean).join(" · ")}</div>` : "";
   if(ausencia){
     cls += ` ausencia-${ausencia.tipo}`;
     if(ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo"){
@@ -1653,6 +1714,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         <div class="turno-cliente">${AUSENCIA_LABELS[ausencia.tipo]}</div>
         ${ausencia.tipoAsignacion ? `<div class="turno-tipo">${ausencia.tipoAsignacion}</div>` : ""}
         ${ausencia.horario ? `<div class="turno-horario" style="font-size:12px;">${ausencia.horario}</div>` : ""}
+        ${lugarSalaHTML(ausencia.lugar, ausencia.sala)}
         ${ausencia.descansoMinutos ? `<div class="turno-descanso">☕ ${ausencia.descansoMinutos} min descanso</div>` : ""}
         ${ausencia.nota ? `<div class="turno-nota">${ausencia.nota}</div>` : ""}
       </div>`;
@@ -1669,6 +1731,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         ${timelineHTML(rango)}
         <div class="turno-cliente">${ev.summary}</div>
         ${datos.tipoAsignacion ? `<div class="turno-tipo">${datos.tipoAsignacion}</div>` : ""}
+        ${lugarSalaHTML(datos.lugar, datos.sala)}
         ${datos.descansoMinutos ? `<div class="turno-descanso">☕ ${datos.descansoMinutos} min descanso</div>` : ""}
       </div>`;
     }).join("");
@@ -1680,6 +1743,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
     contenido = `<div class="turno-block turno-defecto" style="border-left-color:${AUSENCIA_COLORS.oficina};">
       <div class="turno-cliente">Oficina Scope</div>
       <div class="turno-horario" style="font-size:12px;">${horarioOficinaDefecto(nombreTecnico)}</div>
+      <div class="turno-lugar">📍 Scope</div>
       <div class="turno-nota">Por defecto</div>
     </div>`;
   }
@@ -1934,6 +1998,16 @@ function renderAusencias(){
           <input type="text" id="ausHorario" placeholder="09:00–14:00 y 15:00–18:00">
         </div>
       </div>
+      <div class="row hidden" id="ausLugarRow">
+        <div class="field">
+          <label>Lugar de trabajo</label>
+          <input type="text" id="ausLugar" placeholder="Scope">
+        </div>
+        <div class="field">
+          <label>Sala (si aplica)</label>
+          <input type="text" id="ausSala" placeholder="Opcional">
+        </div>
+      </div>
       <div class="row hidden" id="ausDescansoRow" style="align-items:flex-end;">
         <div class="field" style="max-width:180px;">
           <label style="display:flex;align-items:center;gap:6px;">
@@ -1963,6 +2037,9 @@ function renderAusencias(){
     const minutosDescanso = document.getElementById("ausDescansoMinutos");
     const tipoAsignacionRow = document.getElementById("ausTipoAsignacionRow");
     const tipoAsignacionSelect = document.getElementById("ausTipoAsignacion");
+    const lugarRow = document.getElementById("ausLugarRow");
+    const lugarInput = document.getElementById("ausLugar");
+    const salaInput = document.getElementById("ausSala");
 
     const evaluarDescansoAuto = ()=>{
       const horas = horasDesdeTextoLibre(horarioInput.value);
@@ -1977,11 +2054,14 @@ function renderAusencias(){
     const actualizarCamposTipo = ()=>{
       const tipo = tipoSelect.value;
       const necesitaHorario = tipo==="oficina" || tipo==="manual" || tipo==="teletrabajo";
+      const necesitaLugar = tipo==="oficina" || tipo==="manual";
       horarioRow.classList.toggle("hidden", !necesitaHorario);
       descansoRow.classList.toggle("hidden", !necesitaHorario);
       tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
+      lugarRow.classList.toggle("hidden", !necesitaLugar);
       notaRow.classList.toggle("hidden", tipo!=="manual");
       if(tipo==="oficina" && !horarioInput.value) horarioInput.value = AUSENCIA_HORARIO_DEFECTO.oficina;
+      if(tipo==="oficina" && !lugarInput.value) lugarInput.value = "Scope";
       if(necesitaHorario) evaluarDescansoAuto();
     };
     tipoSelect.addEventListener("change", actualizarCamposTipo);
@@ -1995,13 +2075,16 @@ function renderAusencias(){
       const desde = document.getElementById("ausDesde").value;
       const hasta = document.getElementById("ausHasta").value;
       const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo";
+      const necesitaLugar = tipo==="oficina"||tipo==="manual";
       const horario = necesitaHorario ? horarioInput.value : "";
       const nota = tipo==="manual" ? document.getElementById("ausNota").value : "";
       const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
       const tipoAsignacion = necesitaHorario ? tipoAsignacionSelect.value : "";
+      const lugar = necesitaLugar ? lugarInput.value : "";
+      const sala = necesitaLugar ? salaInput.value : "";
       if(!tid || !desde) return toast("Falta técnico o fecha");
       if(necesitaHorario && !tipoAsignacion) return toast("Elige el tipo de asignación");
-      addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos, tipoAsignacion);
+      addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala);
     });
   } else {
     formCont.innerHTML = `<p class="muted" style="margin:0;">Inicia sesión como administrador para añadir o quitar entradas.</p>`;
@@ -2016,6 +2099,7 @@ function renderAusencias(){
         ${AUSENCIA_LABELS[datos.tipo] || datos.tipo}
         ${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}
         ${datos.horario?` · ${datos.horario}`:""}
+        ${(datos.lugar||datos.sala)?` · 📍 ${[datos.lugar,datos.sala].filter(Boolean).join(" · ")}`:""}
         ${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
         ${datos.nota?` · ${datos.nota}`:""}
       </div>
