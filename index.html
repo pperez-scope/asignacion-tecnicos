@@ -128,6 +128,28 @@
   }
   nav.tabs button.active{color:#fff;border-bottom-color:var(--amber);}
 
+  #bannerLibranzas{
+    background:#FDE7E1;
+    border-bottom:2px solid var(--danger);
+    color:#7A2E1D;
+    padding:9px 16px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    font-size:13px;
+    font-weight:600;
+    text-align:center;
+    flex-wrap:wrap;
+    position:sticky;
+    top:100px;
+    z-index:18;
+  }
+  #bannerLibranzas button{
+    background:var(--danger);color:#fff;border:none;
+    padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;
+  }
+
   main{padding:16px;max-width:1300px;margin:0 auto;}
   .card{
     background:var(--surface);
@@ -530,6 +552,8 @@
   <button data-tab="admin" id="tabAdminBtn" class="hidden">Admin</button>
 </nav>
 
+<div id="bannerLibranzas" class="hidden"></div>
+
 <main>
 
   <!-- SIN CUBRIR -->
@@ -611,6 +635,10 @@
   <!-- AUSENCIAS -->
   <section id="view-ausencias" class="hidden">
     <h2 class="section-title">Otras asignaciones</h2>
+    <div class="card hidden" id="libranzasPendientesCard">
+      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Libranzas compensatorias pendientes</h3>
+      <div id="libranzasPendientesList"></div>
+    </div>
     <div class="card" id="ausenciasForm">
       <p class="muted">Inicia sesión como administrador para añadir o quitar ausencias.</p>
     </div>
@@ -1114,7 +1142,7 @@ async function guardarNotaEvento(eventId, texto){
   await update(ref(db, `eventos/${eventId}`), { notaInterna: texto||"" });
   toast("Descripción guardada");
 }
-async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala){
+async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala, libranzaCompensatoria){
   const updates = {};
   asignacionesLista.forEach(({tid, tipoAsignacion})=>{
     updates[`asignaciones/${eventId}/${tid}`] = {
@@ -1122,8 +1150,12 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
       descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
       tipoAsignacion: tipoAsignacion||"",
       lugar: lugar||"",
-      sala: sala||""
+      sala: sala||"",
+      libranzaCompensatoria: libranzaCompensatoria || null
     };
+    if(libranzaCompensatoria){
+      updates[`ausencias/${tid}/${libranzaCompensatoria}`] = { tipo:"libranza", nota:"Compensa trabajo en fin de semana/festivo" };
+    }
   });
   await update(ref(db), updates);
   try{ await actualizarDescripcionEvento(eventId); }
@@ -1131,14 +1163,20 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
   const n = asignacionesLista.length;
   toast(`${n} técnico${n>1?"s":""} asignado${n>1?"s":""}`);
 }
-async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala){
-  await update(ref(db, `asignaciones/${eventId}/${tecnicoId}`), {
+async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala, libranzaCompensatoria){
+  const updates = {
     horario: horario||"",
     descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
     tipoAsignacion: tipoAsignacion||"",
     lugar: lugar||"",
     sala: sala||""
-  });
+  };
+  if(libranzaCompensatoria!==undefined) updates.libranzaCompensatoria = libranzaCompensatoria || null;
+  const dbUpdates = { [`asignaciones/${eventId}/${tecnicoId}`]: updates };
+  if(libranzaCompensatoria){
+    dbUpdates[`ausencias/${tecnicoId}/${libranzaCompensatoria}`] = { tipo:"libranza", nota:"Compensa trabajo en fin de semana/festivo" };
+  }
+  await update(ref(db), dbUpdates);
   try{ await actualizarDescripcionEvento(eventId); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   toast("Técnico asignado");
@@ -1173,8 +1211,56 @@ async function removeAusencia(tecnicoId, fecha){
   await remove(ref(db, `ausencias/${tecnicoId}/${fecha}`));
 }
 
+/* ---------- Libranzas compensatorias por trabajar en fin de semana/festivo ---------- */
+function esFindeOFestivo(fechaIso){
+  return !esDiaLaborable(parseIsoLocal(fechaIso.slice(0,10)));
+}
+/* Lista de asignaciones en fin de semana/festivo a las que aún no se les ha puesto libranza compensatoria */
+function obtenerLibranzasPendientes(){
+  const pendientes = [];
+  Object.entries(STATE.asignaciones).forEach(([eventId, porTecnico])=>{
+    const evento = STATE.eventos[eventId];
+    if(!evento || !esFindeOFestivo(evento.start)) return;
+    Object.entries(porTecnico).forEach(([tid, datos])=>{
+      if(!datos.libranzaCompensatoria){
+        pendientes.push({ eventId, tid, evento, datos });
+      }
+    });
+  });
+  pendientes.sort((a,b)=> new Date(a.evento.start) - new Date(b.evento.start));
+  return pendientes;
+}
+async function resolverLibranzaPendiente(eventId, tid, fecha){
+  await update(ref(db), {
+    [`asignaciones/${eventId}/${tid}/libranzaCompensatoria`]: fecha,
+    [`ausencias/${tid}/${fecha}`]: { tipo:"libranza", nota:"Compensa trabajo en fin de semana/festivo" }
+  });
+  toast("Libranza compensatoria asignada");
+}
+async function marcarLibranzaNoNecesaria(eventId, tid){
+  await update(ref(db), { [`asignaciones/${eventId}/${tid}/libranzaCompensatoria`]: "no_aplica" });
+  toast("Marcado como no necesario");
+}
+
 /* ---------- RENDER ---------- */
+function renderBannerLibranzas(){
+  const banner = document.getElementById("bannerLibranzas");
+  const pendientes = obtenerLibranzasPendientes();
+  if(pendientes.length===0){
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
+  banner.classList.remove("hidden");
+  banner.innerHTML = `⚠️ ${pendientes.length} libranza${pendientes.length>1?"s":""} compensatoria${pendientes.length>1?"s":""} pendiente${pendientes.length>1?"s":""} de asignar (trabajo en fin de semana/festivo)
+    <button id="btnVerLibranzasPendientes">Ver</button>`;
+  document.getElementById("btnVerLibranzasPendientes").addEventListener("click", ()=>{
+    document.querySelector('nav.tabs button[data-tab="ausencias"]').click();
+  });
+}
+
 function render(){
+  renderBannerLibranzas();
   const activeTab = document.querySelector("nav.tabs button.active")?.dataset.tab;
   if(!activeTab) return;
   if(activeTab==="sincubrir") renderSinCubrir();
@@ -1321,10 +1407,12 @@ function renderAsignarDetalle(eventId){
   if(!evento){ cont.innerHTML = ""; return; }
   const asign = STATE.asignaciones[eventId] || {};
 
+  const eventoEsFindeFestivo = esFindeOFestivo(evento.start);
   const asignadosHtml = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre || tid;
     const lugarTxt = [datos.lugar, datos.sala].filter(Boolean).join(" · ");
-    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
+    const libranzaPendiente = eventoEsFindeFestivo && !datos.libranzaCompensatoria;
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}${libranzaPendiente?` · ⚠️ libranza pendiente`:""}
       ${isAdmin?`<button data-editar="${tid}" title="Editar">✎</button><button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
@@ -1390,6 +1478,14 @@ function renderAsignarDetalle(eventId){
           <input type="number" id="editDescansoMinutos" value="${datos.descansoMinutos||15}" min="0" step="5" ${datos.descansoMinutos?"":"disabled"}>
         </div>
       </div>
+      ${esFindeOFestivo(evento.start) ? `
+      <div class="row" style="background:#FDE7E1;border-radius:8px;padding:10px 12px;margin:0 0 12px;">
+        <div class="field" style="margin-bottom:0;">
+          <label style="color:#7A2E1D;">⚠️ Este evento es en fin de semana/festivo — libranza compensatoria</label>
+          <input type="date" id="editLibranzaCompensatoria" value="${(datos.libranzaCompensatoria && datos.libranzaCompensatoria!=='no_aplica') ? datos.libranzaCompensatoria : ''}">
+          <p class="muted" style="margin-top:4px;">Si no la indicas ahora, quedará pendiente y aparecerá como aviso hasta que se asigne.</p>
+        </div>
+      </div>` : ""}
       <button class="btn btn-amber" id="btnGuardarEdicion">Guardar cambios</button>
       <button class="btn btn-ghost" id="btnCancelarEdicion">Cancelar</button>
     `;
@@ -1459,6 +1555,14 @@ function renderAsignarDetalle(eventId){
         </div>
       </div>
       <p class="muted" id="descansoAutoHint" style="margin-top:-6px;"></p>
+      ${esFindeOFestivo(evento.start) ? `
+      <div class="row" style="background:#FDE7E1;border-radius:8px;padding:10px 12px;margin:0 0 12px;">
+        <div class="field" style="margin-bottom:0;">
+          <label style="color:#7A2E1D;">⚠️ Este evento es en fin de semana/festivo — libranza compensatoria (se aplica a todos los marcados)</label>
+          <input type="date" id="nuevoLibranzaCompensatoria">
+          <p class="muted" style="margin-top:4px;">Si no la indicas ahora, quedará pendiente y aparecerá como aviso hasta que se asigne (puedes ponerla luego individualmente si cada técnico necesita un día distinto).</p>
+        </div>
+      </div>` : ""}
       <button class="btn btn-amber" id="btnAsignar">Asignar seleccionados</button>
     `;
   }
@@ -1562,14 +1666,28 @@ function renderAsignarDetalle(eventId){
 
     const btnGuardarEdicion = document.getElementById("btnGuardarEdicion");
     if(btnGuardarEdicion){
-      btnGuardarEdicion.addEventListener("click", ()=>{
+      btnGuardarEdicion.addEventListener("click", async ()=>{
         const tipoAsignacion = document.getElementById("editTipoAsignacion").value;
         if(!tipoAsignacion) return toast("Elige el tipo de asignación");
         const horario = inputHorario.value;
         const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
         const lugar = document.getElementById("editLugar").value;
         const sala = document.getElementById("editSala").value;
-        asignarTecnico(eventId, editandoTecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala);
+        const inputLibranza = document.getElementById("editLibranzaCompensatoria");
+        const libranzaCompensatoria = inputLibranza ? (inputLibranza.value || null) : undefined;
+
+        // Si había una libranza compensatoria puesta antes y ahora se borra o se cambia de fecha,
+        // eliminamos la entrada anterior en Otras asignaciones (solo si la creó la propia app),
+        // así el día vuelve automáticamente a mostrar Oficina Scope por defecto.
+        const anterior = asign[editandoTecnicoId]?.libranzaCompensatoria;
+        if(anterior && anterior!=="no_aplica" && anterior!==libranzaCompensatoria){
+          const entradaAnterior = STATE.ausencias[editandoTecnicoId]?.[anterior];
+          if(entradaAnterior?.tipo==="libranza" && entradaAnterior?.nota==="Compensa trabajo en fin de semana/festivo"){
+            await removeAusencia(editandoTecnicoId, anterior);
+          }
+        }
+
+        asignarTecnico(eventId, editandoTecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala, libranzaCompensatoria);
         editandoTecnicoId = null;
       });
     }
@@ -1647,7 +1765,8 @@ function renderAsignarDetalle(eventId){
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
       const lugar = document.getElementById("nuevoLugar")?.value || "";
       const sala = document.getElementById("nuevoSala")?.value || "";
-      asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala);
+      const libranzaCompensatoria = document.getElementById("nuevoLibranzaCompensatoria")?.value || null;
+      asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala, libranzaCompensatoria);
     });
   }
 }
@@ -1969,6 +2088,41 @@ function renderVistaGeneral(){
 }
 
 function renderAusencias(){
+  const pendientesCard = document.getElementById("libranzasPendientesCard");
+  const pendientesList = document.getElementById("libranzasPendientesList");
+  const pendientes = obtenerLibranzasPendientes();
+  if(pendientes.length===0 || !isAdmin){
+    pendientesCard.classList.add("hidden");
+  } else {
+    pendientesCard.classList.remove("hidden");
+    pendientesList.innerHTML = pendientes.map(({eventId,tid,evento})=>{
+      const nombre = STATE.tecnicos[tid]?.nombre || tid;
+      return `<div class="event-row">
+        <div class="event-fecha">${fmtFecha(evento.start)}</div>
+        <div style="flex:1;">
+          <strong>${nombre}</strong> · ${evento.summary}
+        </div>
+        <input type="date" class="input-fecha-libranza" data-event="${eventId}" data-tid="${tid}" style="width:160px;">
+        <button class="btn btn-amber" data-resolver="${eventId}|${tid}">Asignar</button>
+        <button class="btn btn-ghost" data-no-aplica="${eventId}|${tid}">No aplica</button>
+      </div>`;
+    }).join("");
+    pendientesList.querySelectorAll("[data-resolver]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const [eventId,tid] = btn.dataset.resolver.split("|");
+        const input = pendientesList.querySelector(`.input-fecha-libranza[data-event="${eventId}"][data-tid="${tid}"]`);
+        if(!input.value) return toast("Elige una fecha para la libranza");
+        resolverLibranzaPendiente(eventId, tid, input.value);
+      });
+    });
+    pendientesList.querySelectorAll("[data-no-aplica]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const [eventId,tid] = btn.dataset.noAplica.split("|");
+        marcarLibranzaNoNecesaria(eventId, tid);
+      });
+    });
+  }
+
   const selTec = document.getElementById("selectTecnicoAusencias");
   if(!selTec.dataset.filled){
     selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
