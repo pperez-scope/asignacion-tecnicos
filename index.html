@@ -975,6 +975,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
 document.getElementById("authBox").addEventListener("click", (e)=>{
   if(e.target.id==="btnLogin") doLogin();
   if(e.target.id==="btnLogout") doLogout();
+  if(e.target.id==="btnSyncHeader") sincronizarTodosLosCalendarios("header");
 });
 
 async function doLogin(){
@@ -987,6 +988,9 @@ async function doLogin(){
     }
     accessToken = credential.accessToken;
     toast("Conectado con Google Calendar");
+    renderAuthBox();
+    iniciarAutoSync();
+    sincronizarTodosLosCalendarios("auto");
   }catch(err){
     console.error(err);
     toast("No se pudo iniciar sesión: " + err.message);
@@ -994,6 +998,7 @@ async function doLogin(){
 }
 async function doLogout(){
   accessToken = null;
+  detenerAutoSync();
   await signOut(auth);
 }
 
@@ -1007,8 +1012,13 @@ onAuthStateChanged(auth, (user)=>{
 
 function renderAuthBox(){
   const box = document.getElementById("authBox");
-  if(currentUser && isAdmin){
+  if(currentUser && isAdmin && accessToken){
     box.innerHTML = `<span>${currentUser.displayName?.split(" ")[0] || currentUser.email}</span>
+      <button class="btn btn-outline" id="btnSyncHeader" title="Sincronizar calendarios">🔄 Sincronizar</button>
+      <button class="btn btn-outline" id="btnLogout">Salir</button>`;
+  } else if(currentUser && isAdmin){
+    box.innerHTML = `<span>${currentUser.displayName?.split(" ")[0] || currentUser.email}</span>
+      <button class="btn btn-amber" id="btnLogin" title="La sesión de Google Calendar ha caducado">Reconectar</button>
       <button class="btn btn-outline" id="btnLogout">Salir</button>`;
   } else if(currentUser){
     box.innerHTML = `<span class="muted" style="color:#C7CFD8;">Sin permiso de edición</span>
@@ -1042,6 +1052,14 @@ async function calendarFetch(path, options={}){
     ...options,
     headers: { Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json", ...(options.headers||{}) }
   });
+  if(res.status === 401){
+    // El token de Google ha caducado (suele durar ~1 hora). En vez de fallar en silencio,
+    // limpiamos la sesión de Calendar y avisamos con un mensaje claro para reconectar.
+    accessToken = null;
+    detenerAutoSync();
+    renderAuthBox();
+    throw new Error("Tu sesión de Google Calendar ha caducado. Pulsa 'Reconectar' arriba para seguir sincronizando.");
+  }
   if(!res.ok){
     const body = await res.text();
     throw new Error(`Calendar API ${res.status}: ${body}`);
@@ -1088,23 +1106,49 @@ async function syncCalendario(claveCal, calInfo){
   return { sincronizados: fetchedIds.size, borrados };
 }
 
-document.getElementById("btnSync").addEventListener("click", async ()=>{
+/* Sincroniza todos los calendarios configurados. Se usa desde el botón de Admin,
+   desde el botón rápido de la cabecera, y desde el auto-sync periódico. */
+let sincronizando = false;
+async function sincronizarTodosLosCalendarios(origen="manual"){
+  if(sincronizando) return;
+  if(!accessToken){
+    if(origen==="manual") toast("Inicia sesión como admin para sincronizar.");
+    return;
+  }
+  sincronizando = true;
   const statusEl = document.getElementById("syncStatus");
+  if(statusEl) statusEl.textContent = "Sincronizando…";
   try{
-    statusEl.textContent = "Sincronizando…";
     let total = 0, borrados = 0;
     for(const [clave, info] of Object.entries(CALENDARIOS)){
       const r = await syncCalendario(clave, info);
       total += r.sincronizados;
       borrados += r.borrados;
     }
-    statusEl.textContent = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos${borrados?`, ${borrados} eliminados`:""})`;
-    toast("Calendario sincronizado");
+    const mensaje = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos${borrados?`, ${borrados} eliminados`:""})`;
+    if(statusEl) statusEl.textContent = mensaje;
+    if(origen==="manual" || origen==="header") toast("Calendario sincronizado");
   }catch(err){
     console.error(err);
-    statusEl.textContent = "Error al sincronizar: " + err.message;
+    if(statusEl) statusEl.textContent = "Error al sincronizar: " + err.message;
+    if(origen!=="auto") toast(err.message);
+  }finally{
+    sincronizando = false;
   }
-});
+}
+
+/* Auto-sync: mientras haya sesión de admin activa, sincroniza sola cada 10 minutos,
+   para no depender de que alguien recuerde pulsar el botón. */
+let autoSyncInterval = null;
+function iniciarAutoSync(){
+  if(autoSyncInterval) return;
+  autoSyncInterval = setInterval(()=> sincronizarTodosLosCalendarios("auto"), 10*60*1000);
+}
+function detenerAutoSync(){
+  if(autoSyncInterval){ clearInterval(autoSyncInterval); autoSyncInterval = null; }
+}
+
+document.getElementById("btnSync").addEventListener("click", ()=> sincronizarTodosLosCalendarios("manual"));
 
 document.getElementById("btnSeedTecnicos").addEventListener("click", async ()=>{
   const snap = await get(ref(db,"tecnicos"));
