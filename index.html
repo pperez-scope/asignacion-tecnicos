@@ -340,6 +340,8 @@
     position:relative;
   }
   .day-num{font-weight:700;color:var(--ink-soft);font-size:10px;}
+  .day-cell-editable{cursor:pointer;transition:outline .1s ease;}
+  .day-cell-editable:hover{outline:2px solid var(--teal);outline-offset:-2px;}
   .day-cell.tiene-evento{background:#FDFCFA;border-color:var(--amber);}
   .day-cell.ausencia-libranza{background:#EDEDED;}
   .day-cell.ausencia-permiso{background:#FDE7E1;}
@@ -613,6 +615,9 @@
     <div class="card">
       <div id="tecnicoGrid"></div>
     </div>
+    <div class="card hidden" id="editorDiaTecnicoCard">
+      <div id="editorDiaTecnicoContent"></div>
+    </div>
   </section>
 
   <!-- VISTA GENERAL -->
@@ -885,6 +890,7 @@ function fmtHora(iso){
 let weekState = { sincubrir: startOfWeek(new Date()), asignar: startOfWeek(new Date()) };
 let eventoSeleccionado = null;
 let editandoTecnicoId = null;
+let diaTecnicoEditando = null; // {tecnicoId, fecha} cuando el editor de día está abierto en Vista técnico
 
 /* Genera el HTML de una semana tipo iCal con navegación. onlySinCubrir filtra los ya cubiertos. */
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
@@ -1788,7 +1794,7 @@ function renderVistaTecnico(){
   if(!selTec.dataset.filled){
     selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
     selTec.dataset.filled = "1";
-    selTec.onchange = renderVistaTecnico;
+    selTec.onchange = ()=>{ cerrarEditorDiaTecnico(); renderVistaTecnico(); };
   }
   if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
   mesInput.onchange = renderVistaTecnico;
@@ -1960,7 +1966,7 @@ function renderTecnicoSemana(tecnicoId, grid){
     const { cls, contenido } = celdaDiaTecnico(tecnicoId, fechaIso);
     const horasDia = horasDiaTecnico(tecnicoId, fechaIso);
     totalSemana += horasDia;
-    html += `<div class="${cls}" style="min-height:110px;"><div class="day-num">${d.getDate()}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
+    html += `<div class="${cls} ${isAdmin?'day-cell-editable':''}" style="min-height:110px;" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num">${d.getDate()}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
   });
   const maxSemana = horasMaximasTecnico(nombreTecnico, weekStart, weekEnd);
   html += `</div>` + footerTotalHTML("Total semana", totalSemana, maxSemana);
@@ -1973,6 +1979,9 @@ function renderTecnicoSemana(tecnicoId, grid){
       weekState.tecnico = nueva;
       renderVistaTecnico();
     });
+  });
+  grid.querySelectorAll("[data-editar-dia]").forEach(cell=>{
+    cell.addEventListener("click", ()=> abrirEditorDiaTecnico(tecnicoId, cell.dataset.editarDia));
   });
 }
 
@@ -2008,7 +2017,7 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
       totalSemana += horasDia;
       if(primerDiaReal===null) primerDiaReal = new Date(year, month-1, day);
       ultimoDiaReal = new Date(year, month-1, day);
-      html += `<div class="${cls}"><div class="day-num">${day}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
+      html += `<div class="${cls} ${isAdmin?'day-cell-editable':''}" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num">${day}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
     });
     totalMes += totalSemana;
     const maxSemanaFila = primerDiaReal ? horasMaximasTecnico(nombreTecnico, primerDiaReal, ultimoDiaReal) : 0;
@@ -2021,6 +2030,188 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
   const maxMes = horasMaximasTecnico(nombreTecnico, inicioMes, finMes);
   html += footerTotalHTML("Total del mes", totalMes, maxMes);
   grid.innerHTML = html;
+  grid.querySelectorAll("[data-editar-dia]").forEach(cell=>{
+    cell.addEventListener("click", ()=> abrirEditorDiaTecnico(tecnicoId, cell.dataset.editarDia));
+  });
+}
+
+/* ---------- Editor de día individual desde Vista técnico (solo admin) ---------- */
+function abrirEditorDiaTecnico(tecnicoId, fechaIso){
+  diaTecnicoEditando = { tecnicoId, fechaIso };
+  document.getElementById("editorDiaTecnicoCard").classList.remove("hidden");
+  renderEditorDiaTecnico();
+  document.getElementById("editorDiaTecnicoCard").scrollIntoView({ behavior:"smooth", block:"nearest" });
+}
+function cerrarEditorDiaTecnico(){
+  diaTecnicoEditando = null;
+  document.getElementById("editorDiaTecnicoCard").classList.add("hidden");
+}
+
+function renderEditorDiaTecnico(){
+  if(!diaTecnicoEditando) return;
+  const { tecnicoId, fechaIso } = diaTecnicoEditando;
+  const cont = document.getElementById("editorDiaTecnicoContent");
+  const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
+  const fechaLegible = parseIsoLocal(fechaIso).toLocaleDateString("es-ES", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
+
+  const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
+  if(eventosDia.length){
+    // Día con evento(s) de Calendarios: se edita desde allí para no desincronizar con Google Calendar
+    cont.innerHTML = `
+      <p style="margin-top:0;"><strong>${nombreTecnico}</strong> · ${fechaLegible}
+        <button class="btn btn-ghost" id="btnCerrarEditorDia" style="float:right;">Cerrar</button>
+      </p>
+      <p class="muted">Este día tiene evento(s) de calendario asignados. Para mantener sincronizada la descripción en Google Calendar, edítalos desde la pestaña Calendarios:</p>
+      ${eventosDia.map(([id,ev])=>`<button class="btn btn-teal" style="margin:2px 6px 2px 0;" data-ir-evento="${id}">${ev.summary}</button>`).join("")}
+    `;
+    document.getElementById("btnCerrarEditorDia").addEventListener("click", cerrarEditorDiaTecnico);
+    cont.querySelectorAll("[data-ir-evento]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const id = btn.dataset.irEvento;
+        eventoSeleccionado = id; editandoTecnicoId = null;
+        const ev = STATE.eventos[id];
+        if(ev){
+          weekState.asignar = startOfWeek(new Date(ev.start));
+          const mesInputAsig = document.getElementById("mesAsignaciones");
+          if(mesInputAsig) mesInputAsig.value = ev.start.slice(0,7);
+        }
+        cerrarEditorDiaTecnico();
+        document.querySelector('nav.tabs button[data-tab="asignar"]').click();
+      });
+    });
+    return;
+  }
+
+  const ausenciaReal = STATE.ausencias[tecnicoId]?.[fechaIso];
+  const esDefectoOficina = !ausenciaReal && esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico);
+  // Partimos de la entrada real si existe; si no, del valor por defecto de Oficina Scope (si aplica)
+  const base = ausenciaReal || (esDefectoOficina ? { tipo:"oficina", horario: horarioOficinaDefecto(nombreTecnico), lugar:"Scope" } : { tipo:"libranza" });
+
+  cont.innerHTML = `
+    <p style="margin-top:0;"><strong>${nombreTecnico}</strong> · ${fechaLegible}
+      <button class="btn btn-ghost" id="btnCerrarEditorDia" style="float:right;">Cerrar</button>
+    </p>
+    ${esDefectoOficina ? `<p class="muted">Hoy está en Oficina Scope por defecto. Cambia lo que necesites y guarda para fijarlo, o elige otra categoría.</p>` : ""}
+    <div class="row">
+      <div class="field">
+        <label>Categoría</label>
+        <select id="editorDiaTipo">
+          <option value="libranza" ${base.tipo==="libranza"?"selected":""}>Libranza</option>
+          <option value="permiso" ${base.tipo==="permiso"?"selected":""}>Permiso</option>
+          <option value="vacaciones" ${base.tipo==="vacaciones"?"selected":""}>Vacaciones</option>
+          <option value="oficina" ${base.tipo==="oficina"?"selected":""}>Oficina Scope</option>
+          <option value="teletrabajo" ${base.tipo==="teletrabajo"?"selected":""}>Teletrabajo</option>
+          <option value="manual" ${base.tipo==="manual"?"selected":""}>Asignación manual</option>
+        </select>
+      </div>
+    </div>
+    <div class="row hidden" id="editorDiaTipoAsignacionRow">
+      <div class="field">
+        <label>Tipo de asignación</label>
+        <select id="editorDiaTipoAsignacion">
+          <option value="">Selecciona tipo…</option>
+          ${TIPOS_ASIGNACION.map(t=>`<option value="${t}" ${t===base.tipoAsignacion?"selected":""}>${t}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <div class="row hidden" id="editorDiaHorarioRow">
+      <div class="field">
+        <label>Horario</label>
+        <input type="text" id="editorDiaHorario" placeholder="09:00–14:00 y 15:00–18:00" value="${base.horario||""}">
+      </div>
+    </div>
+    <div class="row hidden" id="editorDiaLugarRow">
+      <div class="field">
+        <label>Lugar de trabajo</label>
+        <input type="text" id="editorDiaLugar" value="${base.lugar||""}">
+      </div>
+      <div class="field">
+        <label>Sala (si aplica)</label>
+        <input type="text" id="editorDiaSala" value="${base.sala||""}" placeholder="Opcional">
+      </div>
+    </div>
+    <div class="row hidden" id="editorDiaDescansoRow" style="align-items:flex-end;">
+      <div class="field" style="max-width:180px;">
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" id="editorDiaDescansoActivo" style="width:auto;" ${base.descansoMinutos?"checked":""}>
+          Aplicar descanso
+        </label>
+      </div>
+      <div class="field" style="max-width:160px;">
+        <label>Minutos de descanso</label>
+        <input type="number" id="editorDiaDescansoMinutos" value="${base.descansoMinutos||15}" min="0" step="5" ${base.descansoMinutos?"":"disabled"}>
+      </div>
+    </div>
+    <div class="row hidden" id="editorDiaNotaRow">
+      <div class="field">
+        <label>Descripción</label>
+        <input type="text" id="editorDiaNota" value="${base.nota||""}" placeholder="Ej: apoyo montaje almacén…">
+      </div>
+    </div>
+    <button class="btn btn-amber" id="btnGuardarEditorDia">Guardar</button>
+    ${ausenciaReal ? `<button class="btn btn-danger" id="btnEliminarEditorDia">Eliminar (vuelve al valor por defecto)</button>` : ""}
+  `;
+
+  document.getElementById("btnCerrarEditorDia").addEventListener("click", cerrarEditorDiaTecnico);
+
+  const tipoSelect = document.getElementById("editorDiaTipo");
+  const horarioRow = document.getElementById("editorDiaHorarioRow");
+  const lugarRow = document.getElementById("editorDiaLugarRow");
+  const descansoRow = document.getElementById("editorDiaDescansoRow");
+  const tipoAsigRow = document.getElementById("editorDiaTipoAsignacionRow");
+  const notaRow = document.getElementById("editorDiaNotaRow");
+  const horarioInput = document.getElementById("editorDiaHorario");
+  const chkDescanso = document.getElementById("editorDiaDescansoActivo");
+  const minutosDescanso = document.getElementById("editorDiaDescansoMinutos");
+
+  const evaluarDescansoAuto = ()=>{
+    const horas = horasDesdeTextoLibre(horarioInput.value);
+    if(horas >= 6){
+      chkDescanso.checked = true;
+      if(!minutosDescanso.value || minutosDescanso.value==="0") minutosDescanso.value = 15;
+    }
+    minutosDescanso.disabled = !chkDescanso.checked;
+  };
+  const actualizarCamposTipo = ()=>{
+    const tipo = tipoSelect.value;
+    const necesitaHorario = tipo==="oficina" || tipo==="manual" || tipo==="teletrabajo";
+    const necesitaLugar = tipo==="oficina" || tipo==="manual";
+    horarioRow.classList.toggle("hidden", !necesitaHorario);
+    lugarRow.classList.toggle("hidden", !necesitaLugar);
+    descansoRow.classList.toggle("hidden", !necesitaHorario);
+    tipoAsigRow.classList.toggle("hidden", !necesitaLugar);
+    notaRow.classList.toggle("hidden", tipo!=="manual");
+    if(tipo==="oficina" && !horarioInput.value) horarioInput.value = horarioOficinaDefecto(nombreTecnico);
+    if(tipo==="oficina" && !document.getElementById("editorDiaLugar").value) document.getElementById("editorDiaLugar").value = "Scope";
+    if(necesitaHorario) evaluarDescansoAuto();
+  };
+  tipoSelect.addEventListener("change", actualizarCamposTipo);
+  horarioInput.addEventListener("change", evaluarDescansoAuto);
+  chkDescanso.addEventListener("change", ()=>{ minutosDescanso.disabled = !chkDescanso.checked; });
+  actualizarCamposTipo();
+
+  document.getElementById("btnGuardarEditorDia").addEventListener("click", ()=>{
+    const tipo = tipoSelect.value;
+    const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo";
+    const necesitaLugar = tipo==="oficina"||tipo==="manual";
+    const horario = necesitaHorario ? horarioInput.value : "";
+    const lugar = necesitaLugar ? document.getElementById("editorDiaLugar").value : "";
+    const sala = necesitaLugar ? document.getElementById("editorDiaSala").value : "";
+    const nota = tipo==="manual" ? document.getElementById("editorDiaNota").value : "";
+    const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
+    const tipoAsignacion = necesitaLugar ? document.getElementById("editorDiaTipoAsignacion").value : "";
+    if(necesitaLugar && !tipoAsignacion) return toast("Elige el tipo de asignación");
+    addAusencia(tecnicoId, fechaIso, fechaIso, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala);
+    cerrarEditorDiaTecnico();
+  });
+
+  const btnEliminar = document.getElementById("btnEliminarEditorDia");
+  if(btnEliminar){
+    btnEliminar.addEventListener("click", ()=>{
+      removeAusencia(tecnicoId, fechaIso);
+      cerrarEditorDiaTecnico();
+    });
+  }
 }
 
 function renderVistaGeneral(){
