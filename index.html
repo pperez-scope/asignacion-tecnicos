@@ -531,6 +531,7 @@
   .toast.show{opacity:1;}
   .hidden{display:none !important;}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -667,6 +668,13 @@
     <div class="card">
       <p class="muted" style="margin-top:0;">Carga inicial de la lista de técnicos (solo hace falta una vez).</p>
       <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Informes de servicios</h3>
+      <p class="muted" style="margin-top:0;">Genera un Excel con un formato parecido al que usas ahora a mano, a partir de los eventos y asignaciones ya cargados en la app. Por ahora, solo para el calendario de Fundación Juan March.</p>
+      <p class="muted">El informe solo puede incluir los meses que ya se han sincronizado con Google Calendar (normalmente, de hoy en adelante). Los meses pasados no aparecerán a menos que se hayan sincronizado antes.</p>
+      <button class="btn btn-amber" id="btnInformeJuanMarch">Descargar informe (Fundación Juan March)</button>
+      <p class="muted" id="informeStatus"></p>
     </div>
   </section>
 
@@ -1116,6 +1124,114 @@ document.getElementById("btnSeedTecnicos").addEventListener("click", async ()=>{
   }
   await update(ref(db), updates);
   toast(`${nuevos} técnico${nuevos>1?"s":""} añadido${nuevos>1?"s":""}`);
+});
+
+/* ---------- INFORME DE SERVICIOS (Excel) ---------- */
+const MESES_INFORME = [
+  { nombre:"ENERO", abrev:"ENE" }, { nombre:"FEBRERO", abrev:"FEB" }, { nombre:"MARZO", abrev:"MAR" },
+  { nombre:"ABRIL", abrev:"ABR" }, { nombre:"MAYO", abrev:"MAY" }, { nombre:"JUNIO", abrev:"JUN" },
+  { nombre:"JULIO", abrev:"JUL" }, { nombre:"AGOSTO", abrev:"AGO" }, { nombre:"SEPTIEMBRE", abrev:"SEP" },
+  { nombre:"OCTUBRE", abrev:"OCT" }, { nombre:"NOVIEMBRE", abrev:"NOV" }, { nombre:"DICIEMBRE", abrev:"DIC" }
+];
+function minutosAHora(mins){
+  const h = Math.floor((mins%1440)/60), m = Math.round(mins%60);
+  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+}
+
+document.getElementById("btnInformeJuanMarch").addEventListener("click", ()=>{
+  const statusEl = document.getElementById("informeStatus");
+  if(typeof XLSX === "undefined"){
+    statusEl.textContent = "No se pudo cargar el generador de Excel. Revisa la conexión e inténtalo de nuevo.";
+    return;
+  }
+  const eventosCalendario = Object.entries(STATE.eventos).filter(([,ev])=> ev.calendario==="juanmarch");
+  if(eventosCalendario.length===0){
+    statusEl.textContent = "No hay eventos sincronizados de Fundación Juan March todavía.";
+    return;
+  }
+
+  // Agrupamos eventos por mes (año-mes) según su fecha de inicio
+  const porMes = {}; // "2026-01" -> [ [id,ev], ... ]
+  eventosCalendario.forEach(([id,ev])=>{
+    const clave = ev.start.slice(0,7);
+    (porMes[clave] = porMes[clave] || []).push([id,ev]);
+  });
+  const clavesOrdenadas = Object.keys(porMes).sort();
+
+  const wb = XLSX.utils.book_new();
+  const resumenFilas = [["MES","SERVICIOS"]];
+  let totalGeneral = 0;
+
+  clavesOrdenadas.forEach(clave=>{
+    const [year, monthStr] = clave.split("-");
+    const monthIdx = parseInt(monthStr,10) - 1;
+    const infoMes = MESES_INFORME[monthIdx];
+    const filas = porMes[clave].sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
+
+    const header = ["DÍA","FECHA","HORA","ACTO","HORA CITACIÓN","HORA SALIDA","HORAS SERVICIO","TÉCNICOS","TÉCNICOS ASIGNADOS","LUGAR/SALA","OBSERVACIONES"];
+    const aoa = [header];
+
+    filas.forEach(([id,ev])=>{
+      const fecha = new Date(ev.start);
+      const diaSemana = fecha.toLocaleDateString("es-ES",{ weekday:"long" });
+      const asign = STATE.asignaciones[id] || {};
+      const nombres = Object.keys(asign).map(tid=> STATE.tecnicos[tid]?.nombre).filter(Boolean);
+      const lugares = new Set();
+      let minInicio = null, maxFin = null;
+      Object.values(asign).forEach(datos=>{
+        const rango = parseRangoMinutos(datos.horario);
+        if(rango){
+          minInicio = (minInicio===null) ? rango.inicio : Math.min(minInicio, rango.inicio);
+          maxFin = (maxFin===null) ? rango.fin : Math.max(maxFin, rango.fin);
+        }
+        const ls = [datos.lugar, datos.sala].filter(Boolean).join(" · ");
+        if(ls) lugares.add(ls);
+      });
+      const horaCitacion = minInicio!==null ? minutosAHora(minInicio) : "";
+      const horaSalida = maxFin!==null ? minutosAHora(maxFin) : "";
+      const horasServicio = (minInicio!==null && maxFin!==null) ? Math.round(((maxFin-minInicio)/60)*100)/100 : "";
+
+      aoa.push([
+        diaSemana.charAt(0).toUpperCase()+diaSemana.slice(1),
+        fecha,
+        fmtHora(ev.start),
+        ev.summary,
+        horaCitacion,
+        horaSalida,
+        horasServicio,
+        nombres.length,
+        nombres.join(", "),
+        Array.from(lugares).join(" / "),
+        ev.notaInterna || ""
+      ]);
+    });
+
+    aoa.push([]);
+    aoa.push(["", "", "", "", "", "", "TOTAL SERVICIOS", filas.length]);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [
+      {wch:11},{wch:11},{wch:7},{wch:38},{wch:13},{wch:11},{wch:13},{wch:9},{wch:30},{wch:20},{wch:30}
+    ];
+    const nombreHoja = `${infoMes.abrev}${year.slice(2)}`;
+    XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+
+    resumenFilas.push([infoMes.nombre, filas.length]);
+    totalGeneral += filas.length;
+  });
+
+  resumenFilas.push([]);
+  resumenFilas.push(["TOTAL", totalGeneral]);
+  const wsTotal = XLSX.utils.aoa_to_sheet(resumenFilas);
+  wsTotal["!cols"] = [{wch:14},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, wsTotal, "TOTAL");
+  const idxTotal = wb.SheetNames.indexOf("TOTAL");
+  wb.SheetNames.splice(idxTotal,1);
+  wb.SheetNames.unshift("TOTAL");
+
+  const nombreArchivo = `Informe_Fundacion_Juan_March_${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, nombreArchivo);
+  statusEl.textContent = `Informe descargado: ${nombreArchivo}`;
 });
 
 /* Actualiza (o inserta) el bloque de técnicos en la descripción del evento en Google Calendar */
