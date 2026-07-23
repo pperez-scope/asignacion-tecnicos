@@ -708,8 +708,9 @@ const ADMIN_EMAILS = ["pperez@scopeproducciones.com"];
 
 // Calendarios de cliente integrados. Añadir Ateneo y Producción aquí más adelante.
 const CALENDARIOS = {
-  juanmarch: { nombre: "Fundación Juan March", calendarId: "9ifm1tnjs47e8l5a1kc7stt9lc@group.calendar.google.com" },
-  ateneo: { nombre: "Ateneo", calendarId: "8dd4dbfabee5e2c71c022345788b2505171da4ad2c0778417c2bade4a444845d@group.calendar.google.com" }
+  juanmarch: { nombre: "Fundación Juan March", tipo: "google", calendarId: "9ifm1tnjs47e8l5a1kc7stt9lc@group.calendar.google.com" },
+  ateneo: { nombre: "Ateneo", tipo: "google", calendarId: "8dd4dbfabee5e2c71c022345788b2505171da4ad2c0778417c2bade4a444845d@group.calendar.google.com" },
+  icalExterno: { nombre: "Producción Scope", tipo: "ics", icsUrl: "https://p59-caldav.icloud.com/published/2/AAAAAAAAAAAAAAAAAAAAAH6TtD5N7AM3857NGA4yShMcabGeLQp7_fHPHFQckQUbgsKahrE0wusAtjOIoW1F3wXrMaelmjI7btKD2GQ0RHk" }
 };
 
 const TECNICOS_INICIALES = [
@@ -1067,6 +1068,109 @@ async function calendarFetch(path, options={}){
   return res.json();
 }
 
+/* ---------- Calendarios iCal (.ics) de solo lectura ---------- */
+function parseIcsDate(str){
+  // Formatos habituales: 20260723T090000Z, 20260723T090000, 20260723 (evento de todo el día)
+  if(!str) return null;
+  const m = str.match(/^(\d{4})(\d{2})(\d{2})(T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
+  if(!m) return null;
+  const [, y, mo, d, , h="00", mi="00", s="00", z] = m;
+  if(!m[4]) return `${y}-${mo}-${d}`; // todo el día
+  const iso = `${y}-${mo}-${d}T${h}:${mi}:${s}${z?"Z":""}`;
+  return new Date(iso).toISOString();
+}
+function unescapeIcsText(str){
+  return (str||"").replace(/\\n/gi,"\n").replace(/\\,/g,",").replace(/\\;/g,";").replace(/\\\\/g,"\\");
+}
+function parseIcs(texto){
+  // Desdobla las líneas plegadas (RFC 5545: una línea que continúa empieza por espacio o tab)
+  const lineasCrudas = texto.split(/\r\n|\n|\r/);
+  const lineas = [];
+  lineasCrudas.forEach(linea=>{
+    if(/^[ \t]/.test(linea) && lineas.length){
+      lineas[lineas.length-1] += linea.slice(1);
+    } else {
+      lineas.push(linea);
+    }
+  });
+  const eventos = [];
+  let actual = null;
+  lineas.forEach(linea=>{
+    if(linea === "BEGIN:VEVENT"){ actual = {}; return; }
+    if(linea === "END:VEVENT"){ if(actual) eventos.push(actual); actual = null; return; }
+    if(!actual) return;
+    const idx = linea.indexOf(":");
+    if(idx===-1) return;
+    const clavePart = linea.slice(0,idx);
+    const valor = linea.slice(idx+1);
+    const clave = clavePart.split(";")[0].toUpperCase();
+    if(clave==="UID") actual.uid = valor;
+    else if(clave==="SUMMARY") actual.summary = unescapeIcsText(valor);
+    else if(clave==="DTSTART") actual.start = parseIcsDate(valor);
+    else if(clave==="DTEND") actual.end = parseIcsDate(valor);
+    else if(clave==="DESCRIPTION") actual.description = unescapeIcsText(valor);
+    else if(clave==="STATUS") actual.status = valor;
+  });
+  return eventos;
+}
+async function fetchTextoIcs(url){
+  try{
+    const res = await fetch(url);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  }catch(errDirecto){
+    // El navegador suele bloquear el acceso directo a estos enlaces por CORS.
+    // Reintentamos a través de un proxy público de solo lectura como alternativa.
+    try{
+      const res2 = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+      if(!res2.ok) throw new Error(`HTTP ${res2.status}`);
+      return await res2.text();
+    }catch(errProxy){
+      throw new Error(`No se pudo acceder al calendario iCal ni directamente ni vía proxy: ${errDirecto.message} / ${errProxy.message}`);
+    }
+  }
+}
+function sanitizeFirebaseKey(str){
+  return str.replace(/[.#$\[\]\/]/g, "_");
+}
+async function syncCalendarioIcs(claveCal, calInfo){
+  const inicioVentana = new Date();
+  inicioVentana.setHours(0,0,0,0);
+  const timeMax = new Date(Date.now() + 1000*60*60*24*70);
+  const texto = await fetchTextoIcs(calInfo.icsUrl);
+  const items = parseIcs(texto);
+  const updates = {};
+  const fetchedIds = new Set();
+  items.forEach(ev=>{
+    if(!ev.uid || !ev.start) return;
+    if((ev.status||"").toUpperCase()==="CANCELLED") return;
+    const inicioEvento = new Date(ev.start);
+    if(inicioEvento < inicioVentana || inicioEvento > timeMax) return; // fuera de la ventana visible
+    const idSeguro = `ics_${sanitizeFirebaseKey(ev.uid)}`;
+    fetchedIds.add(idSeguro);
+    updates[`eventos/${idSeguro}`] = {
+      calendario: claveCal,
+      calendarId: null, // de solo lectura: no hay escritura posible en Calendar
+      summary: ev.summary || "(sin título)",
+      start: ev.start,
+      end: ev.end || ev.start,
+      description: ev.description || ""
+    };
+  });
+  let borrados = 0;
+  Object.entries(STATE.eventos).forEach(([id, ev])=>{
+    if(ev.calendario !== claveCal) return;
+    const inicioEvento = new Date(ev.start);
+    if(inicioEvento >= inicioVentana && inicioEvento <= timeMax && !fetchedIds.has(id)){
+      updates[`eventos/${id}`] = null;
+      updates[`asignaciones/${id}`] = null;
+      borrados++;
+    }
+  });
+  await update(ref(db), updates);
+  return { sincronizados: fetchedIds.size, borrados };
+}
+
 async function syncCalendario(claveCal, calInfo){
   const inicioVentana = new Date();
   inicioVentana.setHours(0,0,0,0);
@@ -1111,23 +1215,35 @@ async function syncCalendario(claveCal, calInfo){
 let sincronizando = false;
 async function sincronizarTodosLosCalendarios(origen="manual"){
   if(sincronizando) return;
-  if(!accessToken){
-    if(origen==="manual") toast("Inicia sesión como admin para sincronizar.");
-    return;
-  }
   sincronizando = true;
   const statusEl = document.getElementById("syncStatus");
   if(statusEl) statusEl.textContent = "Sincronizando…";
+  let total = 0, borrados = 0;
+  const errores = [];
   try{
-    let total = 0, borrados = 0;
     for(const [clave, info] of Object.entries(CALENDARIOS)){
-      const r = await syncCalendario(clave, info);
-      total += r.sincronizados;
-      borrados += r.borrados;
+      try{
+        let r;
+        if(info.tipo === "ics"){
+          r = await syncCalendarioIcs(clave, info);
+        } else {
+          if(!accessToken){
+            errores.push(`${info.nombre}: inicia sesión como admin para sincronizar este calendario de Google.`);
+            continue;
+          }
+          r = await syncCalendario(clave, info);
+        }
+        total += r.sincronizados;
+        borrados += r.borrados;
+      }catch(errCal){
+        console.error(errCal);
+        errores.push(`${info.nombre}: ${errCal.message}`);
+      }
     }
-    const mensaje = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos${borrados?`, ${borrados} eliminados`:""})`;
-    if(statusEl) statusEl.textContent = mensaje;
-    if(origen==="manual" || origen==="header") toast("Calendario sincronizado");
+    const mensaje = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos${borrados?`, ${borrados} eliminados`:""})${errores.length?` — ${errores.length} con error`:""}`;
+    if(statusEl) statusEl.textContent = mensaje + (errores.length ? "\n" + errores.join(" · ") : "");
+    if(errores.length===0 && (origen==="manual" || origen==="header")) toast("Calendario sincronizado");
+    else if(errores.length && origen!=="auto") toast(errores[0]);
   }catch(err){
     console.error(err);
     if(statusEl) statusEl.textContent = "Error al sincronizar: " + err.message;
@@ -1288,6 +1404,16 @@ async function actualizarDescripcionEvento(eventId){
     if(!nombre) return null;
     return datos.tipoAsignacion ? `${nombre} (${datos.tipoAsignacion})` : nombre;
   }).filter(Boolean);
+
+  if(!evento.calendarId){
+    // Calendario de solo lectura (p.ej. iCal externo): no hay forma de escribir en el origen.
+    // Guardamos igualmente el bloque de técnicos en la propia app para que se vea en la descripción.
+    const block = `${MARKER_START}\n${nombres.length ? nombres.join(", ") : "(sin asignar)"}\n${MARKER_END}`;
+    const original = (evento.description || "").replace(new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`), "").trim();
+    const nuevaDescripcion = (original ? original+"\n\n" : "") + block;
+    await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
+    return;
+  }
 
   // Traemos la descripción actual real desde Calendar (por si alguien la editó a mano)
   const actual = await calendarFetch(`calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}`);
@@ -1749,9 +1875,14 @@ function renderAsignarDetalle(eventId){
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
     ${formAsignacionHtml}
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+    ${evento.calendarId ? `
     <button class="btn btn-danger" id="btnEliminarEvento">Eliminar evento (app y Calendar)</button>
     <button class="btn btn-ghost" id="btnQuitarSoloApp">Solo quitar de la app</button>
     <p class="muted">"Eliminar evento" lo borra también en Google Calendar, sin notificar a nadie. "Solo quitar de la app" es para cuando ya lo has borrado tú en Calendar y aquí no se ha actualizado todavía.</p>
+    ` : `
+    <button class="btn btn-ghost" id="btnQuitarSoloApp">Quitar de la app</button>
+    <p class="muted">Este calendario es de solo lectura (no tenemos permisos de escritura sobre el origen), así que solo se puede quitar de la app. Si sigue existiendo en el calendario original, volverá a aparecer en la próxima sincronización.</p>
+    `}
     ` : `<p class="muted">Inicia sesión como admin para modificar asignaciones.</p>`}
   `;
 
