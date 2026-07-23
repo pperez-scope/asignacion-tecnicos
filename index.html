@@ -1180,8 +1180,8 @@ async function syncCalendarioIcs(claveCal, calInfo){
     }
   });
   await update(ref(db), updates);
-  console.log(`[ICS ${claveCal}] archivo: ${items.length} eventos totales · dentro de ventana: ${fetchedIds.size} · fuera de ventana (pasados/lejanos): ${fueraDeVentana} · recurrentes sin expandir: ${recurrentesSinExpandir}`);
-  return { sincronizados: fetchedIds.size, borrados, avisoRecurrentes: recurrentesSinExpandir>0 };
+  const diagnostico = `${claveCal}: ${items.length} en el archivo, ${fetchedIds.size} dentro de ventana, ${fueraDeVentana} fuera de ventana${recurrentesSinExpandir?`, ${recurrentesSinExpandir} recurrentes`:""}`;
+  return { sincronizados: fetchedIds.size, borrados, avisoRecurrentes: recurrentesSinExpandir>0, diagnostico };
 }
 
 async function syncCalendario(claveCal, calInfo){
