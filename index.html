@@ -1114,21 +1114,25 @@ function parseIcs(texto){
   return eventos;
 }
 async function fetchTextoIcs(url){
-  try{
-    const res = await fetch(url);
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.text();
-  }catch(errDirecto){
-    // El navegador suele bloquear el acceso directo a estos enlaces por CORS.
-    // Reintentamos a través de un proxy público de solo lectura como alternativa.
+  const intentos = [
+    { nombre:"directo", url },
+    { nombre:"allorigins", url:`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
+    { nombre:"codetabs", url:`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` },
+    { nombre:"corsproxy.io", url:`https://corsproxy.io/?url=${encodeURIComponent(url)}` }
+  ];
+  const errores = [];
+  for(const intento of intentos){
     try{
-      const res2 = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
-      if(!res2.ok) throw new Error(`HTTP ${res2.status}`);
-      return await res2.text();
-    }catch(errProxy){
-      throw new Error(`No se pudo acceder al calendario iCal ni directamente ni vía proxy: ${errDirecto.message} / ${errProxy.message}`);
+      const res = await fetch(intento.url);
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const texto = await res.text();
+      if(!texto.includes("BEGIN:VCALENDAR")) throw new Error("respuesta sin contenido de calendario válido");
+      return texto;
+    }catch(err){
+      errores.push(`${intento.nombre}: ${err.message}`);
     }
   }
+  throw new Error(`No se pudo acceder al calendario iCal por ninguna vía (${errores.join(" · ")})`);
 }
 function sanitizeFirebaseKey(str){
   return str.replace(/[.#$\[\]\/]/g, "_");
