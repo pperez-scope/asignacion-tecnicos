@@ -1110,13 +1110,13 @@ function parseIcs(texto){
     else if(clave==="DTEND") actual.end = parseIcsDate(valor);
     else if(clave==="DESCRIPTION") actual.description = unescapeIcsText(valor);
     else if(clave==="STATUS") actual.status = valor;
+    else if(clave==="RRULE") actual.recurrente = true;
   });
   return eventos;
 }
 async function fetchTextoIcs(url){
   const intentos = [
     { nombre:"directo", url },
-    { nombre:"r.jina.ai", url:`https://r.jina.ai/${url}` },
     { nombre:"allorigins", url:`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
     { nombre:"codetabs", url:`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` },
     { nombre:"corsproxy.io", url:`https://corsproxy.io/?url=${encodeURIComponent(url)}` }
@@ -1127,7 +1127,11 @@ async function fetchTextoIcs(url){
       const res = await fetch(intento.url);
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const texto = await res.text();
-      if(!texto.includes("BEGIN:VCALENDAR")) throw new Error("respuesta sin contenido de calendario válido");
+      // Algunos proxies devuelven 200 con una respuesta truncada, reformateada o una página
+      // de error en vez del archivo real. Exigimos que el calendario esté completo (inicio y cierre).
+      if(!texto.includes("BEGIN:VCALENDAR") || !texto.includes("END:VCALENDAR")){
+        throw new Error("respuesta incompleta o no es un calendario válido (puede que el proxy la haya recortado o reescrito)");
+      }
       return texto;
     }catch(err){
       errores.push(`${intento.nombre}: ${err.message}`);
@@ -1146,11 +1150,14 @@ async function syncCalendarioIcs(claveCal, calInfo){
   const items = parseIcs(texto);
   const updates = {};
   const fetchedIds = new Set();
+  let fueraDeVentana = 0;
+  let recurrentesSinExpandir = 0;
   items.forEach(ev=>{
     if(!ev.uid || !ev.start) return;
     if((ev.status||"").toUpperCase()==="CANCELLED") return;
+    if(ev.recurrente) recurrentesSinExpandir++;
     const inicioEvento = new Date(ev.start);
-    if(inicioEvento < inicioVentana || inicioEvento > timeMax) return; // fuera de la ventana visible
+    if(inicioEvento < inicioVentana || inicioEvento > timeMax){ fueraDeVentana++; return; } // fuera de la ventana visible
     const idSeguro = `ics_${sanitizeFirebaseKey(ev.uid)}`;
     fetchedIds.add(idSeguro);
     updates[`eventos/${idSeguro}`] = {
@@ -1173,7 +1180,8 @@ async function syncCalendarioIcs(claveCal, calInfo){
     }
   });
   await update(ref(db), updates);
-  return { sincronizados: fetchedIds.size, borrados };
+  console.log(`[ICS ${claveCal}] archivo: ${items.length} eventos totales · dentro de ventana: ${fetchedIds.size} · fuera de ventana (pasados/lejanos): ${fueraDeVentana} · recurrentes sin expandir: ${recurrentesSinExpandir}`);
+  return { sincronizados: fetchedIds.size, borrados, avisoRecurrentes: recurrentesSinExpandir>0 };
 }
 
 async function syncCalendario(claveCal, calInfo){
@@ -1225,12 +1233,14 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
   if(statusEl) statusEl.textContent = "Sincronizando…";
   let total = 0, borrados = 0;
   const errores = [];
+  const avisos = [];
   try{
     for(const [clave, info] of Object.entries(CALENDARIOS)){
       try{
         let r;
         if(info.tipo === "ics"){
           r = await syncCalendarioIcs(clave, info);
+          if(r.avisoRecurrentes) avisos.push(`${info.nombre}: tiene eventos recurrentes (semanales, mensuales…) que de momento solo se sincronizan con su primera fecha, no con todas las repeticiones.`);
         } else {
           if(!accessToken){
             errores.push(`${info.nombre}: inicia sesión como admin para sincronizar este calendario de Google.`);
@@ -1246,7 +1256,7 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
       }
     }
     const mensaje = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos${borrados?`, ${borrados} eliminados`:""})${errores.length?` — ${errores.length} con error`:""}`;
-    if(statusEl) statusEl.textContent = mensaje + (errores.length ? "\n" + errores.join(" · ") : "");
+    if(statusEl) statusEl.textContent = mensaje + (errores.length ? "\n" + errores.join(" · ") : "") + (avisos.length ? "\n⚠️ " + avisos.join(" · ") : "");
     if(errores.length===0 && (origen==="manual" || origen==="header")) toast("Calendario sincronizado");
     else if(errores.length && origen!=="auto") toast(errores[0]);
   }catch(err){
