@@ -1995,6 +1995,12 @@ function renderAsignarDetalle(eventId){
         const inputLibranza = document.getElementById("editLibranzaCompensatoria");
         const libranzaCompensatoria = inputLibranza ? (inputLibranza.value || null) : undefined;
 
+        const conflictos = obtenerConflictosHorario(editandoTecnicoId, eventId, evento.start.slice(0,10), horario);
+        if(conflictos.length){
+          const nombreTecnico = STATE.tecnicos[editandoTecnicoId]?.nombre || editandoTecnicoId;
+          if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
+        }
+
         // Si había una libranza compensatoria puesta antes y ahora se borra o se cambia de fecha,
         // eliminamos la entrada anterior en Otras asignaciones (solo si la creó la propia app),
         // así el día vuelve automáticamente a mostrar Oficina Scope por defecto.
@@ -2081,6 +2087,14 @@ function renderAsignarDetalle(eventId){
         asignacionesLista.push({ tid: chk.dataset.tid, tipoAsignacion });
       }
       const horario = inputHorario.value;
+      const fechaIso = evento.start.slice(0,10);
+      for(const {tid} of asignacionesLista){
+        const conflictos = obtenerConflictosHorario(tid, eventId, fechaIso, horario);
+        if(conflictos.length){
+          const nombreTecnico = STATE.tecnicos[tid]?.nombre || tid;
+          if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
+        }
+      }
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
       const lugar = document.getElementById("nuevoLugar")?.value || "";
       const sala = document.getElementById("nuevoSala")?.value || "";
@@ -2140,6 +2154,28 @@ function parseRangoMinutos(str){
   let inicio = h1*60+mi1, fin = h2*60+mi2;
   if(fin <= inicio) fin += 24*60;
   return { inicio, fin };
+}
+
+/* Comprueba si asignar a un técnico en un horario nuevo se solapa con otro evento distinto
+   ya asignado ese mismo día. Devuelve la lista de conflictos (evento + horario) encontrados. */
+function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNuevo){
+  const rangoNuevo = parseRangoMinutos(horarioNuevo);
+  if(!rangoNuevo) return []; // sin horario definido, no podemos comparar
+  const conflictos = [];
+  eventosDelDia(fechaIso).forEach(([id, ev])=>{
+    if(id === eventoIdActual) return;
+    const datos = STATE.asignaciones[id]?.[tecnicoId];
+    if(!datos) return;
+    const rangoExistente = parseRangoMinutos(datos.horario);
+    if(!rangoExistente) return;
+    const seSolapan = rangoNuevo.inicio < rangoExistente.fin && rangoExistente.inicio < rangoNuevo.fin;
+    if(seSolapan) conflictos.push({ evento: ev, horario: datos.horario });
+  });
+  return conflictos;
+}
+function mensajeConflictosHorario(nombreTecnico, conflictos){
+  const detalle = conflictos.map(c => `"${c.evento.summary}" (${c.horario})`).join(", ");
+  return `${nombreTecnico} ya está asignado ese día a ${detalle}, y el horario se solapa con esta asignación.\n\n¿Asignar de todas formas?`;
 }
 
 // Franja de referencia para la mini línea de tiempo (06:00–02:00, cubre turnos hasta bien entrada la noche)
