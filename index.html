@@ -663,7 +663,7 @@
     <div class="card">
       <p class="muted" style="margin-top:0;">Sincroniza los eventos de los calendarios de cliente con la app. Hazlo cada vez que abras la app para gestionar asignaciones.</p>
       <button class="btn btn-teal" id="btnSync">Sincronizar eventos de Calendar</button>
-      <p class="muted" id="syncStatus"></p>
+      <p class="muted" id="syncStatus" style="white-space:pre-line;"></p>
     </div>
     <div class="card">
       <p class="muted" style="margin-top:0;">Carga inicial de la lista de técnicos (solo hace falta una vez).</p>
@@ -1234,6 +1234,7 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
   let total = 0, borrados = 0;
   const errores = [];
   const avisos = [];
+  const diagnosticos = [];
   try{
     for(const [clave, info] of Object.entries(CALENDARIOS)){
       try{
@@ -1241,6 +1242,7 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
         if(info.tipo === "ics"){
           r = await syncCalendarioIcs(clave, info);
           if(r.avisoRecurrentes) avisos.push(`${info.nombre}: tiene eventos recurrentes (semanales, mensuales…) que de momento solo se sincronizan con su primera fecha, no con todas las repeticiones.`);
+          if(r.diagnostico) diagnosticos.push(r.diagnostico);
         } else {
           if(!accessToken){
             errores.push(`${info.nombre}: inicia sesión como admin para sincronizar este calendario de Google.`);
@@ -1256,7 +1258,10 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
       }
     }
     const mensaje = `Última sincronización: ${new Date().toLocaleString("es-ES")} (${total} eventos${borrados?`, ${borrados} eliminados`:""})${errores.length?` — ${errores.length} con error`:""}`;
-    if(statusEl) statusEl.textContent = mensaje + (errores.length ? "\n" + errores.join(" · ") : "") + (avisos.length ? "\n⚠️ " + avisos.join(" · ") : "");
+    if(statusEl) statusEl.textContent = mensaje
+      + (errores.length ? "\n" + errores.join(" · ") : "")
+      + (avisos.length ? "\n⚠️ " + avisos.join(" · ") : "")
+      + (diagnosticos.length ? "\n🔎 " + diagnosticos.join(" · ") : "");
     if(errores.length===0 && (origen==="manual" || origen==="header")) toast("Calendario sincronizado");
     else if(errores.length && origen!=="auto") toast(errores[0]);
   }catch(err){
