@@ -710,7 +710,7 @@ const ADMIN_EMAILS = ["pperez@scopeproducciones.com"];
 const CALENDARIOS = {
   juanmarch: { nombre: "Fundación Juan March", tipo: "google", calendarId: "9ifm1tnjs47e8l5a1kc7stt9lc@group.calendar.google.com" },
   ateneo: { nombre: "Ateneo", tipo: "google", calendarId: "8dd4dbfabee5e2c71c022345788b2505171da4ad2c0778417c2bade4a444845d@group.calendar.google.com" },
-  icalExterno: { nombre: "Producción Scope", tipo: "ics", icsUrl: "https://p59-caldav.icloud.com/published/2/AAAAAAAAAAAAAAAAAAAAAH6TtD5N7AM3857NGA4yShMcabGeLQp7_fHPHFQckQUbgsKahrE0wusAtjOIoW1F3wXrMaelmjI7btKD2GQ0RHk" }
+  icalExterno: { nombre: "Producción Scope", tipo: "google", calendarId: "elbsngara0lfeufikgje3d6o5j8sbv08@import.calendar.google.com", soloLectura: true }
 };
 
 const TECNICOS_INICIALES = [
@@ -1199,6 +1199,7 @@ async function syncCalendario(claveCal, calInfo){
     updates[`eventos/${ev.id}`] = {
       calendario: claveCal,
       calendarId: calInfo.calendarId,
+      soloLectura: !!calInfo.soloLectura,
       summary: ev.summary || "(sin título)",
       start: ev.start?.dateTime || ev.start?.date,
       end: ev.end?.dateTime || ev.end?.date,
@@ -1425,8 +1426,9 @@ async function actualizarDescripcionEvento(eventId){
     return datos.tipoAsignacion ? `${nombre} (${datos.tipoAsignacion})` : nombre;
   }).filter(Boolean);
 
-  if(!evento.calendarId){
-    // Calendario de solo lectura (p.ej. iCal externo): no hay forma de escribir en el origen.
+  if(!evento.calendarId || evento.soloLectura){
+    // Calendario de solo lectura (iCal externo, o calendario de Google importado por suscripción,
+    // que Google no permite editar aunque tengamos acceso de lectura): no hay forma de escribir en el origen.
     // Guardamos igualmente el bloque de técnicos en la propia app para que se vea en la descripción.
     const block = `${MARKER_START}\n${nombres.length ? nombres.join(", ") : "(sin asignar)"}\n${MARKER_END}`;
     const original = (evento.description || "").replace(new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`), "").trim();
@@ -1895,7 +1897,7 @@ function renderAsignarDetalle(eventId){
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
     ${formAsignacionHtml}
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
-    ${evento.calendarId ? `
+    ${(evento.calendarId && !evento.soloLectura) ? `
     <button class="btn btn-danger" id="btnEliminarEvento">Eliminar evento (app y Calendar)</button>
     <button class="btn btn-ghost" id="btnQuitarSoloApp">Solo quitar de la app</button>
     <p class="muted">"Eliminar evento" lo borra también en Google Calendar, sin notificar a nadie. "Solo quitar de la app" es para cuando ya lo has borrado tú en Calendar y aquí no se ha actualizado todavía.</p>
