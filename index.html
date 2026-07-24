@@ -670,6 +670,11 @@
       <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
     </div>
     <div class="card">
+      <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Publicación de semanas para técnicos</h3>
+      <p class="muted" style="margin-top:0;">Los técnicos solo ven, en su vista de solo lectura, las semanas pasadas, la actual y la siguiente. A partir del jueves se desbloquea una semana más automáticamente. Aquí puedes publicar alguna semana extra antes de tiempo si hace falta.</p>
+      <div id="publicacionSemanasList"></div>
+    </div>
+    <div class="card">
       <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Informes de servicios</h3>
       <p class="muted" style="margin-top:0;">Genera un Excel con un formato parecido al que usas ahora a mano, a partir de los eventos y asignaciones ya cargados en la app. Por ahora, solo para el calendario de Fundación Juan March.</p>
       <p class="muted">El informe solo puede incluir los meses que ya se han sincronizado con Google Calendar (normalmente, de hoy en adelante). Los meses pasados no aparecerán a menos que se hayan sincronizado antes.</p>
@@ -844,7 +849,7 @@ let currentUser = null;
 let accessToken = null;
 let isAdmin = false;
 
-let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{} };
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{} };
 
 /* ---------- HELPERS ---------- */
 function slugify(str){
@@ -890,6 +895,66 @@ function fmtWeekRange(start){
   end.setDate(end.getDate()+6);
   const optsShort = { day:"2-digit", month:"short" };
   return `${start.toLocaleDateString("es-ES",optsShort)} – ${end.toLocaleDateString("es-ES",{...optsShort, year:"numeric"})}`;
+}
+
+/* ---------- Publicación de semanas para los técnicos (vista de solo lectura) ---------- */
+// Por defecto, los técnicos ven: semanas pasadas, la semana actual y la siguiente.
+// A partir del jueves de la semana actual, se desbloquea una semana más (la siguiente a la siguiente).
+// El admin puede además publicar semanas extra a mano desde el panel de Admin.
+function limiteAutomaticoPublicacion(){
+  const hoy = new Date();
+  const lunesActual = startOfWeek(hoy);
+  const esJuevesOPosterior = hoy.getDay()===0 || hoy.getDay()>=4; // 4=jueves,5=viernes,6=sábado,0=domingo
+  const semanasAdelante = esJuevesOPosterior ? 2 : 1;
+  const limite = new Date(lunesActual);
+  limite.setDate(limite.getDate() + semanasAdelante*7);
+  return limite;
+}
+function limiteVisiblePublicacion(){
+  const auto = limiteAutomaticoPublicacion();
+  const manual = STATE.configuracion?.ultimaSemanaPublicadaManual;
+  if(!manual) return auto;
+  const manualDate = parseIsoLocal(manual);
+  return manualDate > auto ? manualDate : auto;
+}
+/* Un técnico (no admin) puede ver esta semana si su lunes no supera el límite visible */
+function semanaVisiblePara(weekStartDate){
+  if(isAdmin) return true;
+  return startOfWeek(weekStartDate) <= limiteVisiblePublicacion();
+}
+async function publicarSemana(lunesIso){
+  await update(ref(db), { "configuracion/ultimaSemanaPublicadaManual": lunesIso });
+  toast("Semana publicada");
+}
+function renderPublicacionSemanas(){
+  const cont = document.getElementById("publicacionSemanasList");
+  if(!cont) return;
+  const auto = limiteAutomaticoPublicacion();
+  const visible = limiteVisiblePublicacion();
+  const lunesHoy = startOfWeek(new Date());
+  const semanas = [];
+  for(let i=0;i<8;i++){
+    const lunes = new Date(lunesHoy);
+    lunes.setDate(lunes.getDate() + i*7);
+    semanas.push(lunes);
+  }
+  cont.innerHTML = semanas.map(lunes=>{
+    const lunesIso = isoDate(lunes);
+    const publicadaAuto = lunes <= auto;
+    const publicadaManual = !publicadaAuto && lunes <= visible;
+    const publicada = publicadaAuto || publicadaManual;
+    let etiqueta = "";
+    if(publicadaAuto) etiqueta = `<span class="muted">Visible por defecto</span>`;
+    else if(publicadaManual) etiqueta = `<span style="color:var(--teal);font-weight:600;">Publicada a mano</span>`;
+    else etiqueta = `<button class="btn btn-amber" data-publicar-semana="${lunesIso}">Publicar semana</button>`;
+    return `<div class="event-row">
+      <div class="event-fecha">${fmtWeekRange(lunes)}</div>
+      <div style="flex:1;">${etiqueta}</div>
+    </div>`;
+  }).join("");
+  cont.querySelectorAll("[data-publicar-semana]").forEach(btn=>{
+    btn.addEventListener("click", ()=> publicarSemana(btn.dataset.publicarSemana));
+  });
 }
 function fmtHora(iso){
   if(!iso || !iso.includes("T")) return "Todo el día";
@@ -1034,6 +1099,7 @@ onValue(ref(db,"tecnicos"), (snap)=>{ STATE.tecnicos = snap.val() || {}; render(
 onValue(ref(db,"eventos"), (snap)=>{ STATE.eventos = snap.val() || {}; render(); });
 onValue(ref(db,"asignaciones"), (snap)=>{ STATE.asignaciones = snap.val() || {}; render(); });
 onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; render(); });
+onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
 
 /* ---------- TABS ---------- */
 document.getElementById("tabs").addEventListener("click",(e)=>{
@@ -1582,6 +1648,7 @@ function render(){
   if(activeTab==="tecnico") renderVistaTecnico();
   if(activeTab==="general") renderVistaGeneral();
   if(activeTab==="ausencias") renderAusencias();
+  if(activeTab==="admin") renderPublicacionSemanas();
 }
 
 function renderSinCubrir(){
@@ -2303,6 +2370,24 @@ function renderTecnicoSemana(tecnicoId, grid){
   const weekEnd = dias[6];
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
 
+  if(!semanaVisiblePara(weekStart)){
+    grid.innerHTML = `<div class="week-nav">
+        <button class="btn btn-ghost" data-tec-week-nav="-1">‹ Semana anterior</button>
+        <div class="week-range">${fmtWeekRange(weekStart)}</div>
+        <button class="btn btn-ghost" disabled style="opacity:.4;cursor:not-allowed;">Semana siguiente ›</button>
+      </div>
+      <div class="empty-state"><span class="eyebrow">Todavía sin publicar</span><p>Las asignaciones de esta semana se publican los jueves, en el repaso semanal. Vuelve a mirar entonces.</p></div>`;
+    grid.querySelectorAll("[data-tec-week-nav]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const nueva = new Date(weekState.tecnico);
+        nueva.setDate(nueva.getDate() + parseInt(btn.dataset.tecWeekNav,10)*7);
+        weekState.tecnico = nueva;
+        renderVistaTecnico();
+      });
+    });
+    return;
+  }
+
   let totalSemana = 0;
   let html = `<div class="week-nav">
       <button class="btn btn-ghost" data-tec-week-nav="-1">‹ Semana anterior</button>
@@ -2361,11 +2446,16 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
     semana.forEach(day=>{
       if(day===null){ html += `<div></div>`; return; }
       const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const diaDate = new Date(year, month-1, day);
+      if(primerDiaReal===null) primerDiaReal = diaDate;
+      ultimoDiaReal = diaDate;
+      if(!semanaVisiblePara(diaDate)){
+        html += `<div class="day-cell"><div class="day-num">${day}</div><div class="turno-nota" style="margin-top:8px;">🔒 Sin publicar</div></div>`;
+        return;
+      }
       const { cls, contenido } = celdaDiaTecnico(tecnicoId, fechaIso);
       const horasDia = horasDiaTecnico(tecnicoId, fechaIso);
       totalSemana += horasDia;
-      if(primerDiaReal===null) primerDiaReal = new Date(year, month-1, day);
-      ultimoDiaReal = new Date(year, month-1, day);
       html += `<div class="${cls} ${isAdmin?'day-cell-editable':''}" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num">${day}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
     });
     totalMes += totalSemana;
@@ -2591,10 +2681,17 @@ function renderVistaGeneral(){
       const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
       const d = new Date(year, month-1, day);
       const noLaborable = !esDiaLaborable(d);
-      const ausencia = STATE.ausencias[tid]?.[fechaIso];
-      const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
+      const noPublicado = !semanaVisiblePara(d);
       let color = "transparent";
       let titulo = "";
+      if(noPublicado){
+        color = "#EDEDED";
+        titulo = "🔒 Sin publicar";
+        cells += `<td class="${noLaborable?'col-finde':''}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
+        continue;
+      }
+      const ausencia = STATE.ausencias[tid]?.[fechaIso];
+      const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
       if(ausencia){
         color = AUSENCIA_COLORS[ausencia.tipo];
         titulo = AUSENCIA_LABELS[ausencia.tipo];
