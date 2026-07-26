@@ -1845,6 +1845,7 @@ function renderAsignarDetalle(eventId){
         <div class="field">
           <label>Horario</label>
           <input type="text" id="editHorario" placeholder="09:00–18:00" value="${datos.horario||""}">
+          <button type="button" class="btn btn-ghost" id="btnHorarioOficinaEdit" style="margin-top:6px;">📋 Usar horario de Oficina Scope de ${nombreEdit}</button>
         </div>
       </div>
       <div class="row" style="align-items:flex-end;">
@@ -1921,6 +1922,7 @@ function renderAsignarDetalle(eventId){
         <div class="field">
           <label>Horario (se calcula solo, puedes ajustarlo a mano; se aplica igual a todos los marcados)</label>
           <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
+          <button type="button" class="btn btn-ghost" id="btnHorarioOficinaNuevo" style="margin-top:6px;">📋 Usar horario de Oficina Scope</button>
         </div>
       </div>
       <div class="row" style="align-items:flex-end;">
@@ -2049,6 +2051,12 @@ function renderAsignarDetalle(eventId){
     if(inputAntes) inputAntes.addEventListener("input", recalcular);
     if(inputDespues) inputDespues.addEventListener("input", recalcular);
     if(chkDescanso) chkDescanso.addEventListener("change", ()=>{ inputMinutos.disabled = !chkDescanso.checked; });
+    const btnHorarioOficinaEdit = document.getElementById("btnHorarioOficinaEdit");
+    if(btnHorarioOficinaEdit){
+      btnHorarioOficinaEdit.addEventListener("click", ()=>{
+        inputHorario.value = horarioOficinaDefecto(nombreEdit);
+      });
+    }
 
     const btnGuardarEdicion = document.getElementById("btnGuardarEdicion");
     if(btnGuardarEdicion){
@@ -2123,6 +2131,21 @@ function renderAsignarDetalle(eventId){
       if(sel){ sel.disabled = !chk.checked; if(!chk.checked) sel.value = ""; }
     });
   });
+
+  const btnHorarioOficinaNuevo = document.getElementById("btnHorarioOficinaNuevo");
+  if(btnHorarioOficinaNuevo){
+    btnHorarioOficinaNuevo.addEventListener("click", ()=>{
+      const marcados = Array.from(cont.querySelectorAll(".chk-nuevo-tecnico:checked"));
+      if(marcados.length === 1){
+        const nombre = STATE.tecnicos[marcados[0].dataset.tid]?.nombre || "";
+        inputHorario.value = horarioOficinaDefecto(nombre);
+      } else {
+        inputHorario.value = AUSENCIA_HORARIO_DEFECTO.oficina;
+        if(marcados.length > 1) toast("Horario estándar aplicado. Revisa si alguno tiene jornada reducida (Cristina, Patricia) y ajústalo tras asignar.");
+      }
+      evaluarDescansoAuto();
+    });
+  }
 
   const buscador = document.getElementById("buscadorTecnicos");
   if(buscador){
