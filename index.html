@@ -281,6 +281,28 @@
   .field{margin-bottom:12px;}
   .row{display:flex;gap:10px;flex-wrap:wrap;}
   .row > .field{flex:1;min-width:140px;}
+  .row-compact{margin-bottom:8px;}
+  .row-compact > .field{margin-bottom:0;}
+
+  .opciones-avanzadas{
+    margin:2px 0 12px;
+    border:1px dashed var(--line);
+    border-radius:8px;
+    padding:0 12px;
+  }
+  .opciones-avanzadas[open]{padding-bottom:10px;}
+  .opciones-avanzadas summary{
+    cursor:pointer;
+    padding:9px 0;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--teal);
+    list-style:none;
+  }
+  .opciones-avanzadas summary::-webkit-details-marker{display:none;}
+  .opciones-avanzadas summary::before{content:"▸ ";}
+  .opciones-avanzadas[open] summary::before{content:"▾ ";}
+  .opciones-avanzadas .row{margin-top:6px;}
 
   /* Lista de eventos sin cubrir */
   .event-row{
@@ -1808,8 +1830,8 @@ function renderAsignarDetalle(eventId){
     const salasEdit = salasDeCalendario(evento.calendario);
     const lugarEditDefecto = datos.lugar || lugarDefectoCalendario(evento.calendario);
     formAsignacionHtml = `
-      <p style="margin:0 0 8px;font-weight:700;color:var(--teal);">Editando asignación de ${nombreEdit}</p>
-      <div class="row">
+      <p style="margin:0 0 10px;font-weight:700;color:var(--teal);">Editando asignación de ${nombreEdit}</p>
+      <div class="row row-compact">
         <div class="field">
           <label>Tipo de asignación</label>
           <select id="editTipoAsignacion">
@@ -1817,51 +1839,53 @@ function renderAsignarDetalle(eventId){
             ${TIPOS_ASIGNACION.map(t=>`<option value="${t}" ${t===datos.tipoAsignacion?"selected":""}>${t}</option>`).join("")}
           </select>
         </div>
-      </div>
-      <div class="row">
-        <div class="field">
-          <label>Lugar de trabajo</label>
-          <input type="text" id="editLugar" value="${lugarEditDefecto}">
-        </div>
-        <div class="field">
-          <label>Sala</label>
-          ${salasEdit.length ? `<select id="editSala">
-            <option value="">Sin sala</option>
-            ${salasEdit.map(s=>`<option value="${s}" ${s===datos.sala?"selected":""}>${s}</option>`).join("")}
-          </select>` : `<input type="text" id="editSala" value="${datos.sala||""}" placeholder="Si aplica">`}
-        </div>
-      </div>
-      <div class="row">
-        <div class="field">
-          <label>Montaje/preparación antes (min)</label>
-          <input type="number" id="editMontajeAntes" value="0" min="0" step="15">
-        </div>
-        <div class="field">
-          <label>Desmontaje/edición después (min)</label>
-          <input type="number" id="editDesmontajeDespues" value="0" min="0" step="15">
-        </div>
-      </div>
-      <div class="row">
         <div class="field">
           <label>Horario</label>
-          <input type="text" id="editHorario" placeholder="09:00–18:00" value="${datos.horario||""}">
-          <button type="button" class="btn btn-ghost" id="btnHorarioOficinaEdit" style="margin-top:6px;">📋 Usar horario de Oficina Scope de ${nombreEdit}</button>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="editHorario" placeholder="09:00–18:00" value="${datos.horario||""}">
+            <button type="button" class="btn btn-ghost" id="btnHorarioOficinaEdit" title="Usar horario de Oficina Scope de ${nombreEdit}" style="white-space:nowrap;">📋 Oficina</button>
+          </div>
         </div>
       </div>
-      <div class="row" style="align-items:flex-end;">
-        <div class="field" style="max-width:180px;">
+      <div class="row row-compact" style="align-items:flex-end;">
+        <div class="field" style="max-width:170px;">
           <label style="display:flex;align-items:center;gap:6px;">
             <input type="checkbox" id="editDescansoActivo" style="width:auto;" ${datos.descansoMinutos?"checked":""}>
-            Aplicar descanso
+            Descanso
           </label>
         </div>
-        <div class="field" style="max-width:160px;">
-          <label>Minutos de descanso</label>
-          <input type="number" id="editDescansoMinutos" value="${datos.descansoMinutos||15}" min="0" step="5" ${datos.descansoMinutos?"":"disabled"}>
+        <div class="field" style="max-width:130px;">
+          <input type="number" id="editDescansoMinutos" value="${datos.descansoMinutos||15}" min="0" step="5" ${datos.descansoMinutos?"":"disabled"} placeholder="min">
         </div>
       </div>
+      <details class="opciones-avanzadas">
+        <summary>Más opciones (lugar, sala, montaje/desmontaje)</summary>
+        <div class="row row-compact">
+          <div class="field">
+            <label>Lugar de trabajo</label>
+            <input type="text" id="editLugar" value="${lugarEditDefecto}">
+          </div>
+          <div class="field">
+            <label>Sala</label>
+            ${salasEdit.length ? `<select id="editSala">
+              <option value="">Sin sala</option>
+              ${salasEdit.map(s=>`<option value="${s}" ${s===datos.sala?"selected":""}>${s}</option>`).join("")}
+            </select>` : `<input type="text" id="editSala" value="${datos.sala||""}" placeholder="Si aplica">`}
+          </div>
+        </div>
+        <div class="row row-compact">
+          <div class="field">
+            <label>Montaje/preparación antes (min)</label>
+            <input type="number" id="editMontajeAntes" value="0" min="0" step="15">
+          </div>
+          <div class="field">
+            <label>Desmontaje/edición después (min)</label>
+            <input type="number" id="editDesmontajeDespues" value="0" min="0" step="15">
+          </div>
+        </div>
+      </details>
       ${esFindeOFestivo(evento.start) ? `
-      <div class="row" style="background:#FDE7E1;border-radius:8px;padding:10px 12px;margin:0 0 12px;">
+      <div class="row" style="background:#FDE7E1;border-radius:8px;padding:10px 12px;margin:10px 0 12px;">
         <div class="field" style="margin-bottom:0;">
           <label style="color:#7A2E1D;">⚠️ Este evento es en fin de semana/festivo — libranza compensatoria</label>
           <input type="date" id="editLibranzaCompensatoria" value="${(datos.libranzaCompensatoria && datos.libranzaCompensatoria!=='no_aplica') ? datos.libranzaCompensatoria : ''}">
@@ -1895,51 +1919,55 @@ function renderAsignarDetalle(eventId){
         <label>Añadir técnico(s) — marca varios y elige el tipo de asignación de cada uno</label>
         ${checklistHtml}
       </div>
-      <div class="row">
+      <div class="row row-compact">
         <div class="field">
-          <label>Lugar de trabajo</label>
-          <input type="text" id="nuevoLugar" value="${lugarNuevoDefecto}">
-        </div>
-        <div class="field">
-          <label>Sala</label>
-          ${salasNuevo.length ? `<select id="nuevoSala">
-            <option value="">Sin sala</option>
-            ${salasNuevo.map(s=>`<option value="${s}">${s}</option>`).join("")}
-          </select>` : `<input type="text" id="nuevoSala" placeholder="Si aplica">`}
+          <label>Horario (se calcula solo, ajústalo si hace falta; se aplica a todos los marcados)</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
+            <button type="button" class="btn btn-ghost" id="btnHorarioOficinaNuevo" title="Usar horario de Oficina Scope" style="white-space:nowrap;">📋 Oficina</button>
+          </div>
         </div>
       </div>
-      <div class="row">
-        <div class="field">
-          <label>Montaje/preparación antes (min)</label>
-          <input type="number" id="nuevoMontajeAntes" value="0" min="0" step="15">
-        </div>
-        <div class="field">
-          <label>Desmontaje/edición después (min)</label>
-          <input type="number" id="nuevoDesmontajeDespues" value="0" min="0" step="15">
-        </div>
-      </div>
-      <div class="row">
-        <div class="field">
-          <label>Horario (se calcula solo, puedes ajustarlo a mano; se aplica igual a todos los marcados)</label>
-          <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
-          <button type="button" class="btn btn-ghost" id="btnHorarioOficinaNuevo" style="margin-top:6px;">📋 Usar horario de Oficina Scope</button>
-        </div>
-      </div>
-      <div class="row" style="align-items:flex-end;">
-        <div class="field" style="max-width:180px;">
+      <div class="row row-compact" style="align-items:flex-end;">
+        <div class="field" style="max-width:170px;">
           <label style="display:flex;align-items:center;gap:6px;">
             <input type="checkbox" id="nuevoDescansoActivo" style="width:auto;">
-            Aplicar descanso
+            Descanso
           </label>
         </div>
-        <div class="field" style="max-width:160px;">
-          <label>Minutos de descanso</label>
-          <input type="number" id="nuevoDescansoMinutos" value="15" min="0" step="5">
+        <div class="field" style="max-width:130px;">
+          <input type="number" id="nuevoDescansoMinutos" value="15" min="0" step="5" placeholder="min">
         </div>
       </div>
       <p class="muted" id="descansoAutoHint" style="margin-top:-6px;"></p>
+      <details class="opciones-avanzadas">
+        <summary>Más opciones (lugar, sala, montaje/desmontaje)</summary>
+        <div class="row row-compact">
+          <div class="field">
+            <label>Lugar de trabajo</label>
+            <input type="text" id="nuevoLugar" value="${lugarNuevoDefecto}">
+          </div>
+          <div class="field">
+            <label>Sala</label>
+            ${salasNuevo.length ? `<select id="nuevoSala">
+              <option value="">Sin sala</option>
+              ${salasNuevo.map(s=>`<option value="${s}">${s}</option>`).join("")}
+            </select>` : `<input type="text" id="nuevoSala" placeholder="Si aplica">`}
+          </div>
+        </div>
+        <div class="row row-compact">
+          <div class="field">
+            <label>Montaje/preparación antes (min)</label>
+            <input type="number" id="nuevoMontajeAntes" value="0" min="0" step="15">
+          </div>
+          <div class="field">
+            <label>Desmontaje/edición después (min)</label>
+            <input type="number" id="nuevoDesmontajeDespues" value="0" min="0" step="15">
+          </div>
+        </div>
+      </details>
       ${esFindeOFestivo(evento.start) ? `
-      <div class="row" style="background:#FDE7E1;border-radius:8px;padding:10px 12px;margin:0 0 12px;">
+      <div class="row" style="background:#FDE7E1;border-radius:8px;padding:10px 12px;margin:10px 0 12px;">
         <div class="field" style="margin-bottom:0;">
           <label style="color:#7A2E1D;">⚠️ Este evento es en fin de semana/festivo — libranza compensatoria (se aplica a todos los marcados)</label>
           <input type="date" id="nuevoLibranzaCompensatoria">
