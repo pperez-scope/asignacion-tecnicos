@@ -423,6 +423,16 @@
     color:var(--navy);
     line-height:1.15;
   }
+  .turno-acto-hora{
+    font-size:9.5px;
+    font-weight:600;
+    color:var(--amber-ink);
+    background:var(--amber);
+    display:inline-block;
+    padding:1px 5px;
+    border-radius:4px;
+    margin-top:2px;
+  }
   .turno-cliente{
     font-size:10.5px;
     font-weight:600;
@@ -2368,8 +2378,16 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
     contenido = eventosDia.map(([id,ev])=>{
       const datos = STATE.asignaciones[id][tecnicoId];
       const rango = parseRangoMinutos(datos.horario);
+      const horaOficialActo = `${fmtHora(ev.start)}${ev.end && ev.end!==ev.start ? `–${fmtHora(ev.end)}` : ""}`;
+      let horarioDistintoDelActo = false;
+      if(rango && ev.start && ev.start.includes("T")){
+        const inicioActoMin = new Date(ev.start).getHours()*60 + new Date(ev.start).getMinutes();
+        const finActoMin = ev.end && ev.end.includes("T") ? (new Date(ev.end).getHours()*60 + new Date(ev.end).getMinutes()) : inicioActoMin;
+        horarioDistintoDelActo = rango.inicio !== inicioActoMin || (rango.fin%1440) !== finActoMin;
+      }
       return `<div class="turno-block" style="border-left-color:${colorFor(ev.calendario)};">
         ${datos.horario ? `<div class="turno-horario">${datos.horario.replace(/[–-]/, " → ")}</div>` : ""}
+        ${horarioDistintoDelActo ? `<div class="turno-acto-hora">🎬 Acto: ${horaOficialActo}</div>` : ""}
         ${timelineHTML(rango)}
         <div class="turno-cliente">${ev.summary}</div>
         ${datos.tipoAsignacion ? `<div class="turno-tipo">${datos.tipoAsignacion}</div>` : ""}
