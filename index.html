@@ -304,6 +304,30 @@
   .opciones-avanzadas[open] summary::before{content:"▾ ";}
   .opciones-avanzadas .row{margin-top:6px;}
 
+  .modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(27,36,48,.6);
+    z-index:60;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:5vh 16px;
+    overflow-y:auto;
+  }
+  .modal-box{
+    background:#fff;
+    border-radius:12px;
+    padding:18px 20px 20px;
+    max-width:520px;
+    width:100%;
+    box-shadow:0 24px 60px rgba(0,0,0,.35);
+  }
+  @media (max-width:600px){
+    .modal-overlay{padding:0;align-items:stretch;}
+    .modal-box{border-radius:0;max-width:none;min-height:100%;}
+  }
+
   /* Lista de eventos sin cubrir */
   .event-row{
     display:flex;
@@ -608,8 +632,10 @@
       </div>
     </div>
     <div class="card" id="asignarWeek"></div>
-    <div class="card hidden" id="asignarDetalleCard">
-      <div id="asignarDetalle"></div>
+    <div class="modal-overlay hidden" id="asignarDetalleCard">
+      <div class="modal-box">
+        <div id="asignarDetalle"></div>
+      </div>
     </div>
   </section>
 
@@ -1124,6 +1150,20 @@ onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; rende
 onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
 
 /* ---------- TABS ---------- */
+function cerrarModalAsignacion(){
+  eventoSeleccionado = null;
+  editandoTecnicoId = null;
+  document.getElementById("asignarDetalleCard").classList.add("hidden");
+}
+document.getElementById("asignarDetalleCard").addEventListener("click", (e)=>{
+  if(e.target.id === "asignarDetalleCard") cerrarModalAsignacion();
+});
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape" && !document.getElementById("asignarDetalleCard").classList.contains("hidden")){
+    cerrarModalAsignacion();
+  }
+});
+
 document.getElementById("tabs").addEventListener("click",(e)=>{
   const btn = e.target.closest("button[data-tab]");
   if(!btn) return;
@@ -2005,11 +2045,7 @@ function renderAsignarDetalle(eventId){
     ` : `<p class="muted">Inicia sesión como admin para modificar asignaciones.</p>`}
   `;
 
-  document.getElementById("btnCerrarDetalle").addEventListener("click", ()=>{
-    eventoSeleccionado = null;
-    editandoTecnicoId = null;
-    document.getElementById("asignarDetalleCard").classList.add("hidden");
-  });
+  document.getElementById("btnCerrarDetalle").addEventListener("click", cerrarModalAsignacion);
 
   const btnGuardarNota = document.getElementById("btnGuardarNota");
   if(btnGuardarNota){
@@ -2026,8 +2062,7 @@ function renderAsignarDetalle(eventId){
         await calendarFetch(`calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}?sendUpdates=none`, { method:"DELETE" });
         await remove(ref(db, `eventos/${eventId}`));
         await remove(ref(db, `asignaciones/${eventId}`));
-        eventoSeleccionado = null; editandoTecnicoId = null;
-        document.getElementById("asignarDetalleCard").classList.add("hidden");
+        cerrarModalAsignacion();
         toast("Evento eliminado en la app y en Calendar");
       }catch(err){
         toast("No se pudo eliminar: " + err.message);
@@ -2040,8 +2075,7 @@ function renderAsignarDetalle(eventId){
       if(!confirm("¿Quitar este evento solo de la app? Esto no borra nada en Google Calendar.")) return;
       await remove(ref(db, `eventos/${eventId}`));
       await remove(ref(db, `asignaciones/${eventId}`));
-      eventoSeleccionado = null; editandoTecnicoId = null;
-      document.getElementById("asignarDetalleCard").classList.add("hidden");
+      cerrarModalAsignacion();
       toast("Evento quitado de la app");
     });
   }
