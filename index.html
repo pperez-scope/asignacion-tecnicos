@@ -728,6 +728,29 @@
       <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
     </div>
     <div class="card">
+      <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Calendarios</h3>
+      <p class="muted" style="margin-top:0;">Añade aquí un nuevo calendario de Google (el ID lo encuentras en Google Calendar → los tres puntos junto al calendario → Configuración y uso compartido → Integrar calendario).</p>
+      <div class="row row-compact">
+        <div class="field">
+          <label>Nombre a mostrar</label>
+          <input type="text" id="nuevoCalNombre" placeholder="Ej: Teatro Circo Price">
+        </div>
+        <div class="field">
+          <label>ID de calendario de Google</label>
+          <input type="text" id="nuevoCalId" placeholder="abc123@group.calendar.google.com">
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+        <input type="checkbox" id="nuevoCalSoloLectura" style="width:auto;">
+        Es de solo lectura (calendario importado por suscripción, sin permiso para escribir)
+      </label>
+      <button class="btn btn-amber" id="btnAnadirCalendario">Añadir calendario</button>
+      <p class="muted" id="calendarioStatus"></p>
+      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+      <div id="calendariosList"></div>
+      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);margin-top:10px;" id="btnSeedCalendarios">Cargar calendarios iniciales (Juan March, Ateneo, Producción Scope)</button>
+    </div>
+    <div class="card">
       <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Publicación de semanas para técnicos</h3>
       <p class="muted" style="margin-top:0;">Los técnicos solo ven, en su vista de solo lectura, las semanas pasadas, la actual y la siguiente. A partir del sábado se desbloquea una semana más automáticamente. Aquí puedes publicar alguna semana extra antes de tiempo si hace falta.</p>
       <div id="publicacionSemanasList"></div>
@@ -769,12 +792,14 @@ const firebaseConfig = {
 // Emails con permiso de escritura (añadir aquí a tu compañero cuando toque).
 const ADMIN_EMAILS = ["pperez@scopeproducciones.com"];
 
-// Calendarios de cliente integrados. Añadir Ateneo y Producción aquí más adelante.
-const CALENDARIOS = {
+// Semilla inicial de calendarios (para el botón "Cargar calendarios iniciales" en Admin).
+// A partir de ahora, los calendarios se gestionan y se guardan en Firebase, no aquí.
+const CALENDARIOS_INICIALES = {
   juanmarch: { nombre: "Fundación Juan March", tipo: "google", calendarId: "9ifm1tnjs47e8l5a1kc7stt9lc@group.calendar.google.com" },
   ateneo: { nombre: "Ateneo", tipo: "google", calendarId: "8dd4dbfabee5e2c71c022345788b2505171da4ad2c0778417c2bade4a444845d@group.calendar.google.com" },
   icalExterno: { nombre: "Producción Scope", tipo: "google", calendarId: "elbsngara0lfeufikgje3d6o5j8sbv08@import.calendar.google.com", soloLectura: true }
 };
+let CALENDARIOS = {};
 
 const TECNICOS_INICIALES = [
   "Álvaro Caletrio","Helena Trigueros","Carlota Falcó","Maca Cervantes","Marta Muñoz",
@@ -1158,6 +1183,7 @@ onValue(ref(db,"eventos"), (snap)=>{ STATE.eventos = snap.val() || {}; render();
 onValue(ref(db,"asignaciones"), (snap)=>{ STATE.asignaciones = snap.val() || {}; render(); });
 onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; render(); });
 onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
+onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; render(); });
 
 /* ---------- TABS ---------- */
 function cerrarModalAsignacion(){
@@ -1445,6 +1471,78 @@ document.getElementById("btnSeedTecnicos").addEventListener("click", async ()=>{
   toast(`${nuevos} técnico${nuevos>1?"s":""} añadido${nuevos>1?"s":""}`);
 });
 
+/* ---------- GESTIÓN DE CALENDARIOS ---------- */
+document.getElementById("btnAnadirCalendario").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("calendarioStatus");
+  const nombre = document.getElementById("nuevoCalNombre").value.trim();
+  const calendarId = document.getElementById("nuevoCalId").value.trim();
+  const soloLectura = document.getElementById("nuevoCalSoloLectura").checked;
+  if(!nombre || !calendarId){
+    statusEl.textContent = "Falta el nombre o el ID del calendario.";
+    return;
+  }
+  let clave = slugify(nombre);
+  if(!clave) clave = "calendario";
+  if(CALENDARIOS[clave]){
+    let n = 2;
+    while(CALENDARIOS[`${clave}${n}`]) n++;
+    clave = `${clave}${n}`;
+  }
+  const entrada = { nombre, tipo:"google", calendarId };
+  if(soloLectura) entrada.soloLectura = true;
+  await update(ref(db), { [`calendarios/${clave}`]: entrada });
+  document.getElementById("nuevoCalNombre").value = "";
+  document.getElementById("nuevoCalId").value = "";
+  document.getElementById("nuevoCalSoloLectura").checked = false;
+  statusEl.textContent = `"${nombre}" añadido. Sincroniza para traer sus eventos.`;
+  toast("Calendario añadido");
+});
+
+document.getElementById("btnSeedCalendarios").addEventListener("click", async ()=>{
+  const updates = {};
+  let nuevos = 0;
+  Object.entries(CALENDARIOS_INICIALES).forEach(([clave, datos])=>{
+    if(!CALENDARIOS[clave]){
+      updates[`calendarios/${clave}`] = datos;
+      nuevos++;
+    }
+  });
+  if(nuevos===0){
+    toast("Ya están todos cargados, no se ha añadido ninguno nuevo.");
+    return;
+  }
+  await update(ref(db), updates);
+  toast(`${nuevos} calendario${nuevos>1?"s":""} añadido${nuevos>1?"s":""}`);
+});
+
+function renderCalendariosList(){
+  const cont = document.getElementById("calendariosList");
+  if(!cont) return;
+  const entradas = Object.entries(CALENDARIOS);
+  if(entradas.length===0){
+    cont.innerHTML = `<p class="muted">Todavía no hay calendarios cargados.</p>`;
+    return;
+  }
+  cont.innerHTML = entradas.map(([clave, info])=>`
+    <div class="event-row">
+      <div style="flex:1;">
+        <strong>${info.nombre}</strong>
+        ${info.soloLectura?` · <span class="muted">solo lectura</span>`:""}
+        <div class="muted" style="font-size:11px;word-break:break-all;">${info.calendarId || info.icsUrl || ""}</div>
+      </div>
+      <button class="btn btn-ghost" data-quitar-calendario="${clave}">Quitar</button>
+    </div>
+  `).join("");
+  cont.querySelectorAll("[data-quitar-calendario]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const clave = btn.dataset.quitarCalendario;
+      if(!confirm(`¿Quitar "${CALENDARIOS[clave]?.nombre}" de la app? Sus eventos ya sincronizados se quedarán guardados, pero dejarán de actualizarse.`)) return;
+      await remove(ref(db, `calendarios/${clave}`));
+      toast("Calendario quitado");
+    });
+  });
+}
+
 /* ---------- INFORME DE SERVICIOS (Excel) ---------- */
 const MESES_INFORME = [
   { nombre:"ENERO", abrev:"ENE" }, { nombre:"FEBRERO", abrev:"FEB" }, { nombre:"MARZO", abrev:"MAR" },
@@ -1720,7 +1818,7 @@ function render(){
   if(activeTab==="tecnico") renderVistaTecnico();
   if(activeTab==="general") renderVistaGeneral();
   if(activeTab==="ausencias") renderAusencias();
-  if(activeTab==="admin") renderPublicacionSemanas();
+  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); }
 }
 
 function renderSinCubrir(){
