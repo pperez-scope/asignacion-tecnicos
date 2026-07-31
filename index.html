@@ -2127,8 +2127,11 @@ function renderAsignarDetalle(eventId){
   }
 
   cont.innerHTML = `
-    <p class="muted" style="margin-top:0;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)} · ${fmtHora(evento.start)}–${fmtHora(evento.end)}
-      <button class="btn btn-ghost" id="btnCerrarDetalle" style="float:right;">Cerrar</button>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <h3 style="margin:0;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.02em;font-size:19px;color:var(--navy);line-height:1.2;">${evento.summary}</h3>
+      <button class="btn btn-ghost" id="btnCerrarDetalle" style="flex-shrink:0;">Cerrar</button>
+    </div>
+    <p class="muted" style="margin-top:4px;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)} · ${fmtHora(evento.start)}–${fmtHora(evento.end)}
     </p>
     <div class="field">
       <label>Descripción del evento</label>
