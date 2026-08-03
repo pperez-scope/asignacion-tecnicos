@@ -573,24 +573,28 @@
 
   /* Vista Lista de técnico (tipo Excel) */
   table.lista-tecnico-table{
-    border-collapse:separate;border-spacing:0;width:100%;min-width:960px;font-size:11.5px;
+    border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:11px;
   }
   table.lista-tecnico-table th, table.lista-tecnico-table td{
     box-shadow:inset -1px -1px 0 0 var(--line);
-    padding:6px 7px;text-align:center;white-space:nowrap;
+    padding:6px 5px;text-align:center;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;word-break:break-word;
   }
   table.lista-tecnico-table th{
     background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;z-index:2;
-    font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;
+    font-size:9.5px;text-transform:uppercase;letter-spacing:.02em;white-space:normal;
   }
-  table.lista-tecnico-table td:first-child{
-    font-weight:700;color:var(--navy);background:#fff;white-space:nowrap;text-align:left;
+  table.lista-tecnico-table td:first-child, table.lista-tecnico-table td:nth-child(2){
+    font-weight:700;color:var(--navy);background:#fff;
   }
   table.lista-tecnico-table tr.lista-total-semana td{
     background:var(--mint);font-weight:700;color:var(--teal);
   }
   table.lista-tecnico-table tr.lista-total-semana.excede td{
     background:#FDE7E1;color:var(--danger);
+  }
+  @media (max-width:700px){
+    table.lista-tecnico-table{table-layout:auto;min-width:820px;}
   }
 
   .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:12px;}
@@ -2716,10 +2720,15 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
 
   const header = `<tr>
-    <th>Fecha</th><th>Turno</th><th>Lugar</th><th>Entrada</th><th>Salida</th>
+    <th>Día</th><th>Fecha</th><th>Turno</th><th>Lugar</th><th>Entrada</th><th>Salida</th>
     <th>Descanso</th><th>Asignación</th><th>Hora acto</th><th>Acto / Montaje / Ensayo</th>
-    <th>Horas</th><th>Observaciones</th>
+    <th>Horas</th>
   </tr>`;
+  const colgroup = `<colgroup>
+    <col style="width:9%"><col style="width:7%"><col style="width:7%"><col style="width:13%">
+    <col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:10%">
+    <col style="width:7%"><col style="width:20%"><col style="width:8%">
+  </colgroup>`;
 
   let filas = "";
   let totalMes = 0;
@@ -2730,7 +2739,7 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
     if(diaDate.getDay()===0 || esUltimoDelMes){
       const maxSemana = primerDiaSemana ? horasMaximasTecnico(nombreTecnico, primerDiaSemana, diaDate) : 0;
       const excede = maxSemana>0 && totalSemana > maxSemana+0.01;
-      filas += `<tr class="lista-total-semana ${excede?'excede':''}"><td colspan="9" style="text-align:right;">Total semana</td><td>${fmtHorasHHMM(totalSemana)}${maxSemana>0?` / ${fmtHorasHHMM(maxSemana)}`:""}</td><td></td></tr>`;
+      filas += `<tr class="lista-total-semana ${excede?'excede':''}"><td colspan="10" style="text-align:right;">Total semana</td><td>${fmtHorasHHMM(totalSemana)}${maxSemana>0?` / ${fmtHorasHHMM(maxSemana)}`:""}</td></tr>`;
       totalSemana = 0;
       primerDiaSemana = null;
     }
@@ -2740,11 +2749,12 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
     const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
     const diaDate = new Date(year, month-1, day);
     if(!primerDiaSemana) primerDiaSemana = diaDate;
-    const diaSemanaTxt = diaDate.toLocaleDateString("es-ES",{weekday:"long"});
-    const fechaTxt = `${diaSemanaTxt.charAt(0).toUpperCase()+diaSemanaTxt.slice(1)} ${String(day).padStart(2,"0")}/${String(month).padStart(2,"0")}/${String(year).slice(2)}`;
+    const diaSemanaTxt = diaDate.toLocaleDateString("es-ES",{weekday:"short"}).replace(".","");
+    const diaTxt = diaSemanaTxt.charAt(0).toUpperCase()+diaSemanaTxt.slice(1);
+    const fechaTxt = `${String(day).padStart(2,"0")}/${String(month).padStart(2,"0")}/${String(year).slice(2)}`;
 
     if(!semanaVisiblePara(diaDate) && !isAdmin){
-      filas += `<tr><td>${fechaTxt}</td><td colspan="8" style="text-align:center;color:var(--ink-soft);">🔒 Sin publicar</td><td>00:00</td><td></td></tr>`;
+      filas += `<tr><td>${diaTxt}</td><td>${fechaTxt}</td><td colspan="8" style="text-align:center;color:var(--ink-soft);">🔒 Sin publicar</td><td>00:00</td></tr>`;
       cerrarSemanaSiToca(diaDate, day===diasEnMes);
       continue;
     }
@@ -2771,8 +2781,7 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
           entrada: rango?minutosAHora(rango.inicio):"", salida: rango?minutosAHora(rango.fin):"",
           descanso: datos.descansoMinutos?`${datos.descansoMinutos} min`:"",
           asignacion: datos.tipoAsignacion||"",
-          horaActo, acto: ev.summary, horas: fmtHorasHHMM(horasFila),
-          obs: ev.notaInterna||"", colorKey: ev.calendario
+          horaActo, acto: ev.summary, horas: fmtHorasHHMM(horasFila), colorKey: ev.calendario
         });
       });
     } else if(ausencia){
@@ -2786,8 +2795,8 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
           turno:"", lugar: ausencia.lugar||"", entrada: partes[0]||"", salida: partes.length>1?partes[partes.length-1]:"",
           descanso: ausencia.descansoMinutos?`${ausencia.descansoMinutos} min`:"",
           asignacion: ausencia.tipoAsignacion||"",
-          horaActo:"", acto: AUSENCIA_LABELS[ausencia.tipo], horas: fmtHorasHHMM(horasFila),
-          obs: ausencia.nota||"", colorKey: null
+          horaActo:"", acto: AUSENCIA_LABELS[ausencia.tipo] + (ausencia.nota?` — ${ausencia.nota}`:""),
+          horas: fmtHorasHHMM(horasFila), colorKey: null
         });
       }
     } else if(noLaborable){
@@ -2800,23 +2809,24 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
       filasDia.push({
         turno:"", lugar:"Scope", entrada: partes[0]||"", salida: partes.length>1?partes[partes.length-1]:"",
         descanso:"", asignacion:"", horaActo:"", acto:"Oficina Scope (por defecto)",
-        horas: fmtHorasHHMM(horasFila), obs:"", colorKey:null
+        horas: fmtHorasHHMM(horasFila), colorKey:null
       });
     } else {
       filasDia.push({ especial:true, texto:"Sin asignar", color:"#EFEFEF" });
     }
 
     filasDia.forEach((f,idx)=>{
-      const fechaCell = idx===0 ? `<td rowspan="${filasDia.length}">${fechaTxt}</td>` : "";
+      const diaCell = idx===0 ? `<td rowspan="${filasDia.length}">${diaTxt}</td><td rowspan="${filasDia.length}">${fechaTxt}</td>` : "";
       if(f.especial){
-        filas += `<tr>${fechaCell}<td colspan="8" style="text-align:center;background:${f.color};color:#fff;font-weight:700;">${f.texto}</td><td>00:00</td><td></td></tr>`;
+        filas += `<tr>${diaCell}<td colspan="8" style="text-align:center;background:${f.color};color:#fff;font-weight:700;">${f.texto}</td><td>00:00</td></tr>`;
       } else {
         const colorBorde = f.colorKey ? colorFor(f.colorKey) : "var(--line)";
         filas += `<tr style="border-left:4px solid ${colorBorde};">
-          ${fechaCell}
-          <td>${f.turno}</td><td>${f.lugar}</td><td>${f.entrada}</td><td>${f.salida}</td>
-          <td>${f.descanso}</td><td>${f.asignacion}</td><td>${f.horaActo}</td>
-          <td style="text-align:left;">${f.acto}</td><td>${f.horas}</td><td style="text-align:left;">${f.obs}</td>
+          ${diaCell}
+          <td>${f.turno}</td><td style="white-space:normal;text-align:left;">${f.lugar}</td>
+          <td>${f.entrada}</td><td>${f.salida}</td>
+          <td>${f.descanso}</td><td style="white-space:normal;">${f.asignacion}</td><td>${f.horaActo}</td>
+          <td style="white-space:normal;text-align:left;">${f.acto}</td><td>${f.horas}</td>
         </tr>`;
       }
     });
@@ -2827,6 +2837,7 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
   const maxMes = horasMaximasTecnico(nombreTecnico, new Date(year,month-1,1), new Date(year,month-1,diasEnMes));
   grid.innerHTML = `<div class="general-table-wrap" style="max-height:75vh;">
       <table class="lista-tecnico-table">
+        ${colgroup}
         <thead>${header}</thead>
         <tbody>${filas}</tbody>
       </table>
