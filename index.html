@@ -2419,9 +2419,12 @@ function renderVistaTecnico(){
   const mesField = document.getElementById("mesTecnicoField");
   const switchEl = document.getElementById("tecnicoModoSwitch");
 
-  if(!selTec.dataset.filled){
+  const totalTecnicos = Object.keys(STATE.tecnicos).length;
+  if(selTec.dataset.filledCount !== String(totalTecnicos)){
+    const seleccionActual = selTec.value;
     selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
-    selTec.dataset.filled = "1";
+    if(seleccionActual && STATE.tecnicos[seleccionActual]) selTec.value = seleccionActual;
+    selTec.dataset.filledCount = String(totalTecnicos);
     selTec.onchange = ()=>{ cerrarEditorDiaTecnico(); renderVistaTecnico(); };
   }
   if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
@@ -3142,9 +3145,12 @@ function renderAusencias(){
   }
 
   const selTec = document.getElementById("selectTecnicoAusencias");
-  if(!selTec.dataset.filled){
+  const totalTecnicosAus = Object.keys(STATE.tecnicos).length;
+  if(selTec.dataset.filledCount !== String(totalTecnicosAus)){
+    const seleccionActual = selTec.value;
     selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
-    selTec.dataset.filled = "1";
+    if(seleccionActual && STATE.tecnicos[seleccionActual]) selTec.value = seleccionActual;
+    selTec.dataset.filledCount = String(totalTecnicosAus);
     selTec.onchange = renderAusencias;
   }
   const formCont = document.getElementById("ausenciasForm");
