@@ -629,11 +629,11 @@
 </header>
 
 <nav class="tabs" id="tabs">
-  <button data-tab="sincubrir" class="active">Sin cubrir</button>
+  <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn">Sin cubrir</button>
   <button data-tab="asignar">Calendarios</button>
   <button data-tab="tecnico">Vista técnico</button>
   <button data-tab="general">Vista general</button>
-  <button data-tab="ausencias">Otras asignaciones</button>
+  <button data-tab="ausencias" id="tabAusenciasBtn">Otras asignaciones</button>
   <button data-tab="admin" id="tabAdminBtn" class="hidden">Admin</button>
 </nav>
 
@@ -1183,6 +1183,12 @@ onAuthStateChanged(auth, (user)=>{
   isAdmin = !!(user && ADMIN_EMAILS.includes(user.email));
   renderAuthBox();
   document.getElementById("tabAdminBtn").classList.toggle("hidden", !isAdmin);
+  document.getElementById("tabSinCubrirBtn").classList.toggle("hidden", !isAdmin);
+  document.getElementById("tabAusenciasBtn").classList.toggle("hidden", !isAdmin);
+  const activeTab = document.querySelector("nav.tabs button.active")?.dataset.tab;
+  if(!isAdmin && (activeTab==="sincubrir" || activeTab==="ausencias" || activeTab==="admin")){
+    document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
+  }
   render();
 });
 
@@ -1822,6 +1828,11 @@ async function marcarLibranzaNoNecesaria(eventId, tid){
 /* ---------- RENDER ---------- */
 function renderBannerLibranzas(){
   const banner = document.getElementById("bannerLibranzas");
+  if(!isAdmin){
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
   const pendientes = obtenerLibranzasPendientes();
   if(pendientes.length===0){
     banner.classList.add("hidden");
