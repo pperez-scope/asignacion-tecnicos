@@ -457,6 +457,14 @@
     color:var(--ink-soft);
     margin-top:3px;
   }
+  .turno-adjunto{
+    display:inline-block;
+    font-size:9.5px;
+    font-weight:600;
+    color:var(--teal);
+    text-decoration:underline;
+    margin-top:3px;
+  }
   .turno-nota{
     font-size:9.5px;
     color:var(--ink-soft);
@@ -1398,7 +1406,8 @@ async function syncCalendario(claveCal, calInfo){
       summary: ev.summary || "(sin título)",
       start: ev.start?.dateTime || ev.start?.date,
       end: ev.end?.dateTime || ev.end?.date,
-      description: ev.description || ""
+      description: ev.description || "",
+      adjuntos: (ev.attachments||[]).map(a=>({ titulo: a.title||"Documento", url: a.fileUrl||"" })).filter(a=>a.url)
     };
   });
   // Detectar eventos que ya no existen en Calendar dentro de esta misma ventana de fechas
@@ -2169,6 +2178,10 @@ function renderAsignarDetalle(eventId){
     </div>
     <p class="muted" style="margin-top:4px;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)} · ${fmtHora(evento.start)}–${fmtHora(evento.end)}
     </p>
+    ${(evento.adjuntos && evento.adjuntos.length) ? `
+    <div style="margin:6px 0 10px;">
+      ${evento.adjuntos.map(a=>`<a href="${a.url}" target="_blank" rel="noopener" class="btn btn-teal" style="text-decoration:none;margin:2px 6px 2px 0;display:inline-block;">📎 ${a.titulo}</a>`).join("")}
+    </div>` : ""}
     <div class="field">
       <label>Descripción del evento</label>
       <textarea id="notaEvento" rows="2" placeholder="Notas internas: material especial, punto de encuentro, contacto in situ…" ${isAdmin?"":"disabled"}>${notaActual}</textarea>
@@ -2534,6 +2547,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         ${datos.tipoAsignacion ? `<div class="turno-tipo">${datos.tipoAsignacion}</div>` : ""}
         ${lugarSalaHTML(datos.lugar, datos.sala)}
         ${datos.descansoMinutos ? `<div class="turno-descanso">☕ ${datos.descansoMinutos} min descanso</div>` : ""}
+        ${(ev.adjuntos && ev.adjuntos.length) ? ev.adjuntos.map(a=>`<a href="${a.url}" target="_blank" rel="noopener" class="turno-adjunto" onclick="event.stopPropagation()">📎 ${a.titulo}</a>`).join("") : ""}
       </div>`;
     }).join("");
   } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(STATE.tecnicos[tecnicoId]?.nombre || "")){
@@ -2793,7 +2807,8 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
           entrada: rango?minutosAHora(rango.inicio):"", salida: rango?minutosAHora(rango.fin):"",
           descanso: datos.descansoMinutos?`${datos.descansoMinutos} min`:"",
           asignacion: datos.tipoAsignacion||"",
-          horaActo, acto: ev.summary, horas: fmtHorasHHMM(horasFila), colorKey: ev.calendario
+          horaActo, acto: ev.summary, horas: fmtHorasHHMM(horasFila), colorKey: ev.calendario,
+          adjunto: (ev.adjuntos && ev.adjuntos[0]) ? ev.adjuntos[0].url : ""
         });
       });
     } else if(ausencia){
@@ -2838,7 +2853,7 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
           <td>${f.turno}</td><td style="white-space:normal;text-align:left;">${f.lugar}</td>
           <td>${f.entrada}</td><td>${f.salida}</td>
           <td>${f.descanso}</td><td style="white-space:normal;">${f.asignacion}</td><td>${f.horaActo}</td>
-          <td style="white-space:normal;text-align:left;">${f.acto}</td><td>${f.horas}</td>
+          <td style="white-space:normal;text-align:left;">${f.acto}${f.adjunto?` <a href="${f.adjunto}" target="_blank" rel="noopener" title="Hoja de servicio / escaleta">📎</a>`:""}</td><td>${f.horas}</td>
         </tr>`;
       }
     });
