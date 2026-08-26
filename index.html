@@ -3190,17 +3190,21 @@ function renderVistaGeneral(){
 
   // Posiciona el scroll horizontal para que, por defecto, la primera columna visible
   // sea la semana anterior a la actual (las 4 semanas objetivo empiezan justo ahí).
+  // Hay que restar el ancho real de la columna "Técnico" (que es fija/sticky), o si no
+  // la semana objetivo queda escondida debajo de ella en vez de aparecer a su derecha.
   const wrap = document.getElementById("generalTableWrap");
-  const th0bjetivo = document.querySelector(`.cuadrante-table th[data-fecha="${isoDate(semanaVisibleInicio)}"]`);
-  if(wrap && th0bjetivo) wrap.scrollLeft = th0bjetivo.offsetLeft - 4;
+  const thTecnico = document.querySelector(".cuadrante-table th.th-tecnico");
+  const irASemanaObjetivo = (comportamiento)=>{
+    const th = document.querySelector(`.cuadrante-table th[data-fecha="${isoDate(semanaVisibleInicio)}"]`);
+    const anchoTecnico = thTecnico ? thTecnico.offsetWidth : 0;
+    if(wrap && th) wrap.scrollTo({ left: th.offsetLeft - anchoTecnico - 2, behavior: comportamiento });
+  };
+  irASemanaObjetivo("auto");
 
   const btnHoy = document.getElementById("btnCuadranteHoy");
   if(btnHoy && !btnHoy.dataset.wired){
     btnHoy.dataset.wired = "1";
-    btnHoy.addEventListener("click", ()=>{
-      const th = document.querySelector(`.cuadrante-table th[data-fecha="${isoDate(semanaVisibleInicio)}"]`);
-      if(wrap && th) wrap.scrollTo({ left: th.offsetLeft - 4, behavior:"smooth" });
-    });
+    btnHoy.addEventListener("click", ()=> irASemanaObjetivo("smooth"));
   }
 
   let legend = "";
