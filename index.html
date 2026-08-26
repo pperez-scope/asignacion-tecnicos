@@ -1392,7 +1392,7 @@ async function syncCalendario(claveCal, calInfo){
   inicioVentana.setHours(0,0,0,0);
   const timeMin = inicioVentana.toISOString();
   const timeMax = new Date(Date.now() + 1000*60*60*24*70).toISOString(); // 10 semanas vista
-  const params = new URLSearchParams({ timeMin, timeMax, singleEvents:"true", orderBy:"startTime", maxResults:"250" });
+  const params = new URLSearchParams({ timeMin, timeMax, singleEvents:"true", orderBy:"startTime", maxResults:"250", supportsAttachments:"true" });
   const data = await calendarFetch(`calendars/${encodeURIComponent(calInfo.calendarId)}/events?${params}`);
   const updates = {};
   const fetchedIds = new Set();
@@ -1458,7 +1458,7 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
             continue;
           }
           r = await syncCalendario(clave, info);
-          if(r.diagnosticoAdjuntos && !r.diagnosticoAdjuntos.startsWith(`${info.nombre}: 0 `)) diagnosticos.push(r.diagnosticoAdjuntos);
+          if(r.diagnosticoAdjuntos) diagnosticos.push(r.diagnosticoAdjuntos);
         }
         total += r.sincronizados;
         borrados += r.borrados;
