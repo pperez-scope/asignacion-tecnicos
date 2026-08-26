@@ -395,6 +395,8 @@
   .day-cell.ausencia-oficina{background:#FBF2D9;}
   .day-cell.ausencia-teletrabajo{background:#DEEAF6;}
   .day-cell.ausencia-manual{background:#EEE9FA;}
+  .day-cell.ausencia-mites{background:#F0E6FA;}
+  .day-cell.ausencia-bajaMedica{background:#EDEDED;}
   .day-cell .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
 
   /* Bloque de turno: horario grande e inequívoco (entrada → salida), mini línea de tiempo y descanso aparte */
@@ -579,6 +581,28 @@
     .col-tecnico{width:auto;}
   }
 
+  /* Cuadrante: tabla ancha con scroll horizontal, columnas de día de ancho fijo */
+  table.cuadrante-table{width:auto;}
+  table.cuadrante-table .col-dia{width:28px;}
+  table.cuadrante-table th, table.cuadrante-table td{padding:2px 1px;}
+  table.cuadrante-table th.col-hoy, table.cuadrante-table td.col-hoy{
+    box-shadow:inset -1px -1px 0 0 var(--line), inset 2px 0 0 0 var(--amber), inset -2px 0 0 0 var(--amber);
+  }
+  table.cuadrante-table th.col-hoy{background:var(--amber);color:#fff;}
+  table.cuadrante-table th.col-hoy .th-letra{color:#fff;}
+  table.cuadrante-table td.col-hoy{background:#FBF0E1;}
+  table.cuadrante-table tr.fila-par td.col-hoy{background:#F5E6CC;}
+  table.cuadrante-table th.col-semana-inicio, table.cuadrante-table td.col-semana-inicio{
+    box-shadow:inset -1px -1px 0 0 var(--line), inset 2px 0 0 0 var(--navy);
+  }
+  table.cuadrante-table th.col-hoy.col-semana-inicio{box-shadow:inset -1px -1px 0 0 var(--line), inset 2px 0 0 0 var(--amber), inset -2px 0 0 0 var(--amber);}
+  table.cuadrante-table .th-mes{
+    display:block;font-size:7.5px;text-transform:uppercase;color:var(--amber);font-weight:700;
+  }
+  @media (max-width:700px){
+    table.cuadrante-table{table-layout:fixed;}
+  }
+
   /* Vista Lista de técnico (tipo Excel) */
   table.lista-tecnico-table{
     border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:11px;
@@ -638,7 +662,7 @@
   <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn">Sin cubrir</button>
   <button data-tab="asignar">Calendarios</button>
   <button data-tab="tecnico">Vista técnico</button>
-  <button data-tab="general">Vista general</button>
+  <button data-tab="general">Cuadrante</button>
   <button data-tab="ausencias" id="tabAusenciasBtn">Otras asignaciones</button>
   <button data-tab="admin" id="tabAdminBtn" class="hidden">Admin</button>
 </nav>
@@ -712,17 +736,17 @@
     </div>
   </section>
 
-  <!-- VISTA GENERAL -->
+  <!-- CUADRANTE -->
   <section id="view-general" class="hidden">
-    <h2 class="section-title">Vista general</h2>
+    <h2 class="section-title">Cuadrante</h2>
     <div class="card">
-      <div class="field" style="max-width:220px;">
-        <label>Mes</label>
-        <input type="month" id="mesGeneral" />
+      <div class="row" style="align-items:center;">
+        <p class="muted" style="margin:0;flex:1;">Muestra 4 semanas por defecto (la anterior, la actual y las dos siguientes). Desliza en horizontal para ver más semanas atrás o adelante.</p>
+        <button class="btn btn-ghost" id="btnCuadranteHoy">Ir a hoy</button>
       </div>
     </div>
     <div class="card">
-      <div class="general-table-wrap">
+      <div class="general-table-wrap" id="generalTableWrap">
         <div id="generalTable"></div>
       </div>
       <div class="legend" id="generalLegend"></div>
@@ -919,9 +943,17 @@ const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza so
 const MARKER_END = "--- fin técnicos ---";
 
 const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
-const AUSENCIA_COLORS = { libranza:"#A9D8B0", permiso:"#E08A6E", vacaciones:"#E8A79C", oficina:"#C9A227", manual:"#8F7CC7", teletrabajo:"#5C8FBF" };
-const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo" };
+const AUSENCIA_COLORS = { libranza:"#4DAE5B", permiso:"#3FB8A6", vacaciones:"#D6453B", oficina:"#B8860B", manual:"#8F7CC7", teletrabajo:"#4A7FC9", mites:"#8E5FC7", bajaMedica:"#9AA0A6" };
+const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo", mites:"Mites", bajaMedica:"Baja médica" };
 const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
+// Colores fijos por nombre de calendario, para que coincidan siempre en Cuadrante y en Calendarios.
+// Si un calendario nuevo no está en esta lista, se le asigna un color automático (colorFor) como hasta ahora.
+const COLOR_CALENDARIO_POR_NOMBRE = {
+  "producción scope": "#E8A23D",
+  "fundación juan march": "#5C3A5C",
+  "ateneo": "#2CA6A4",
+  "formación": "#E8709A"
+};
 
 // Horario de Oficina Scope que se asigna por defecto entre semana cuando el técnico no tiene
 // ningún evento, ausencia u otra asignación explícita ese día.
@@ -976,6 +1008,11 @@ function initials(nombre){
   return nombre.split(" ").filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase();
 }
 function colorFor(key){
+  const nombreCalendario = CALENDARIOS[key]?.nombre;
+  if(nombreCalendario){
+    const fijo = COLOR_CALENDARIO_POR_NOMBRE[nombreCalendario.trim().toLowerCase()];
+    if(fijo) return fijo;
+  }
   let hash=0;
   for(let i=0;i<key.length;i++) hash = key.charCodeAt(i) + ((hash<<5)-hash);
   return COLOR_PALETTE[Math.abs(hash) % COLOR_PALETTE.length];
@@ -2954,6 +2991,8 @@ function renderEditorDiaTecnico(){
           <option value="libranza" ${base.tipo==="libranza"?"selected":""}>Libranza</option>
           <option value="permiso" ${base.tipo==="permiso"?"selected":""}>Permiso</option>
           <option value="vacaciones" ${base.tipo==="vacaciones"?"selected":""}>Vacaciones</option>
+          <option value="bajaMedica" ${base.tipo==="bajaMedica"?"selected":""}>Baja médica</option>
+          <option value="mites" ${base.tipo==="mites"?"selected":""}>Mites</option>
           <option value="oficina" ${base.tipo==="oficina"?"selected":""}>Oficina Scope</option>
           <option value="teletrabajo" ${base.tipo==="teletrabajo"?"selected":""}>Teletrabajo</option>
           <option value="manual" ${base.tipo==="manual"?"selected":""}>Asignación manual</option>
@@ -3070,41 +3109,60 @@ function renderEditorDiaTecnico(){
 }
 
 function renderVistaGeneral(){
-  const mesInput = document.getElementById("mesGeneral");
-  if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
-  mesInput.onchange = renderVistaGeneral;
-  const [year, month] = mesInput.value.split("-").map(Number);
-  const diasEnMes = new Date(year, month, 0).getDate();
-
   const tecnicosOrdenados = Object.entries(STATE.tecnicos).sort((a,b)=>{
     const diff = ordenGeneralIndex(a[1].nombre) - ordenGeneralIndex(b[1].nombre);
     return diff!==0 ? diff : a[1].nombre.localeCompare(b[1].nombre,"es");
   });
   const clientesUsados = new Set();
   const LETRAS_DIA = ["L","M","X","J","V","S","D"];
+  const MESES_CORTOS = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+  // La vista por defecto muestra 4 semanas: la anterior a la actual, la actual, y las 2 siguientes.
+  // Se renderiza un rango más amplio (con semanas de margen antes y después) para poder
+  // desplazarse en horizontal sin tener que recargar nada.
+  const hoy = new Date();
+  const semanaActual = startOfWeek(hoy);
+  const semanaVisibleInicio = new Date(semanaActual); semanaVisibleInicio.setDate(semanaVisibleInicio.getDate()-7);
+  const SEMANAS_MARGEN_ANTES = 8;
+  const SEMANAS_MARGEN_DESPUES = 12;
+  const rangeStart = new Date(semanaVisibleInicio); rangeStart.setDate(rangeStart.getDate() - SEMANAS_MARGEN_ANTES*7);
+  const totalDias = (SEMANAS_MARGEN_ANTES + 4 + SEMANAS_MARGEN_DESPUES) * 7;
+  const hoyIso = isoDate(hoy);
+
+  const dias = [];
+  for(let i=0;i<totalDias;i++){
+    const d = new Date(rangeStart); d.setDate(d.getDate()+i);
+    dias.push(d);
+  }
 
   let head = `<tr><th class="th-tecnico">Técnico</th>`;
-  for(let day=1; day<=diasEnMes; day++){
-    const d = new Date(year, month-1, day);
+  dias.forEach(d=>{
     const noLaborable = !esDiaLaborable(d);
-    head += `<th class="${noLaborable?'col-finde':''}"><span class="th-letra">${LETRAS_DIA[(d.getDay()+6)%7]}</span><span class="th-num">${day}</span></th>`;
-  }
+    const esHoy = isoDate(d)===hoyIso;
+    const esLunes = d.getDay()===1;
+    const marcaMes = d.getDate()===1 ? `<span class="th-mes">${MESES_CORTOS[d.getMonth()]}</span>` : "";
+    head += `<th class="${noLaborable?'col-finde':''} ${esHoy?'col-hoy':''} ${esLunes?'col-semana-inicio':''}" data-fecha="${isoDate(d)}">
+      ${marcaMes}<span class="th-letra">${LETRAS_DIA[(d.getDay()+6)%7]}</span><span class="th-num">${d.getDate()}</span>
+    </th>`;
+  });
   head += `</tr>`;
 
   let rows = tecnicosOrdenados.map(([tid,t], idx)=>{
     let cells = `<td class="tecnico-name">${nombreCortoGeneral(t.nombre)}</td>`;
-    for(let day=1; day<=diasEnMes; day++){
-      const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-      const d = new Date(year, month-1, day);
+    dias.forEach(d=>{
+      const fechaIso = isoDate(d);
       const noLaborable = !esDiaLaborable(d);
+      const esHoy = fechaIso===hoyIso;
+      const esLunes = d.getDay()===1;
+      const claseExtra = `${noLaborable?'col-finde':''} ${esHoy?'col-hoy':''} ${esLunes?'col-semana-inicio':''}`;
       const noPublicado = !semanaVisiblePara(d);
       let color = "transparent";
       let titulo = "";
       if(noPublicado){
         color = "#EDEDED";
         titulo = "🔒 Sin publicar";
-        cells += `<td class="${noLaborable?'col-finde':''}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
-        continue;
+        cells += `<td class="${claseExtra}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
+        return;
       }
       const ausencia = STATE.ausencias[tid]?.[fechaIso];
       const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
@@ -3123,12 +3181,27 @@ function renderVistaGeneral(){
         color = AUSENCIA_COLORS.oficina;
         titulo = "Oficina Scope (por defecto)";
       }
-      cells += `<td class="${noLaborable?'col-finde':''}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
-    }
+      cells += `<td class="${claseExtra}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
+    });
     return `<tr class="${idx%2===1?'fila-par':''}">${cells}</tr>`;
   }).join("");
 
-  document.getElementById("generalTable").innerHTML = `<table class="general-table"><colgroup><col class="col-tecnico">${'<col>'.repeat(diasEnMes)}</colgroup><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+  document.getElementById("generalTable").innerHTML = `<table class="general-table cuadrante-table"><colgroup><col class="col-tecnico">${'<col class="col-dia">'.repeat(totalDias)}</colgroup><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+
+  // Posiciona el scroll horizontal para que, por defecto, la primera columna visible
+  // sea la semana anterior a la actual (las 4 semanas objetivo empiezan justo ahí).
+  const wrap = document.getElementById("generalTableWrap");
+  const th0bjetivo = document.querySelector(`.cuadrante-table th[data-fecha="${isoDate(semanaVisibleInicio)}"]`);
+  if(wrap && th0bjetivo) wrap.scrollLeft = th0bjetivo.offsetLeft - 4;
+
+  const btnHoy = document.getElementById("btnCuadranteHoy");
+  if(btnHoy && !btnHoy.dataset.wired){
+    btnHoy.dataset.wired = "1";
+    btnHoy.addEventListener("click", ()=>{
+      const th = document.querySelector(`.cuadrante-table th[data-fecha="${isoDate(semanaVisibleInicio)}"]`);
+      if(wrap && th) wrap.scrollTo({ left: th.offsetLeft - 4, behavior:"smooth" });
+    });
+  }
 
   let legend = "";
   clientesUsados.forEach(clave=>{
@@ -3199,6 +3272,8 @@ function renderAusencias(){
             <option value="libranza">Libranza</option>
             <option value="permiso">Permiso</option>
             <option value="vacaciones">Vacaciones</option>
+            <option value="bajaMedica">Baja médica</option>
+            <option value="mites">Mites</option>
             <option value="oficina">Oficina Scope</option>
             <option value="teletrabajo">Teletrabajo</option>
             <option value="manual">Asignación manual</option>
