@@ -596,8 +596,31 @@
     box-shadow:inset -1px -1px 0 0 var(--line), inset 2px 0 0 0 var(--navy);
   }
   table.cuadrante-table th.col-hoy.col-semana-inicio{box-shadow:inset -1px -1px 0 0 var(--line), inset 2px 0 0 0 var(--amber), inset -2px 0 0 0 var(--amber);}
-  table.cuadrante-table .th-mes{
-    display:block;font-size:7.5px;text-transform:uppercase;color:var(--amber);font-weight:700;
+
+  /* Fila de mes: cabecera propia por encima de la fila de días, con las dos filas fijas
+     (sticky) al hacer scroll vertical, apiladas una debajo de otra. */
+  table.cuadrante-table thead tr:first-child th{
+    position:sticky;
+    top:0;
+    z-index:5;
+    height:19px;
+    background:var(--navy-2);
+    color:#fff;
+    font-family:var(--font-display);
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.03em;
+    text-transform:uppercase;
+    border-left:1px solid rgba(255,255,255,.18);
+  }
+  table.cuadrante-table thead tr:first-child th.th-tecnico{
+    background:var(--navy);
+    border-left:none;
+    top:0;
+    z-index:6;
+  }
+  table.cuadrante-table thead tr:nth-child(2) th{
+    top:19px;
   }
   @media (max-width:700px){
     table.cuadrante-table{table-layout:fixed;}
@@ -943,13 +966,13 @@ const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza so
 const MARKER_END = "--- fin técnicos ---";
 
 const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
-const AUSENCIA_COLORS = { libranza:"#4DAE5B", permiso:"#3FB8A6", vacaciones:"#D6453B", oficina:"#B8860B", manual:"#8F7CC7", teletrabajo:"#4A7FC9", mites:"#8E5FC7", bajaMedica:"#9AA0A6" };
+const AUSENCIA_COLORS = { libranza:"#4DAE5B", permiso:"#3FB8A6", vacaciones:"#D6453B", oficina:"#E8A23D", manual:"#8F7CC7", teletrabajo:"#4A7FC9", mites:"#8E5FC7", bajaMedica:"#9AA0A6" };
 const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo", mites:"Mites", bajaMedica:"Baja médica" };
 const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
 // Colores fijos por nombre de calendario, para que coincidan siempre en Cuadrante y en Calendarios.
 // Si un calendario nuevo no está en esta lista, se le asigna un color automático (colorFor) como hasta ahora.
 const COLOR_CALENDARIO_POR_NOMBRE = {
-  "producción scope": "#E8A23D",
+  "producción scope": "#7B4B2A",
   "fundación juan march": "#5C3A5C",
   "ateneo": "#2CA6A4",
   "formación": "#E8709A"
@@ -3152,14 +3175,28 @@ function renderVistaGeneral(){
   const anchoDisponible = wrapEl ? wrapEl.clientWidth : 900;
   const anchoDia = Math.max(30, Math.floor((anchoDisponible - ANCHO_TECNICO) / 28));
 
-  let head = `<tr><th class="th-tecnico" style="width:${ANCHO_TECNICO}px;">Técnico</th>`;
+  // Fila superior con el nombre de cada mes, fusionando las columnas que le pertenecen.
+  const gruposMes = [];
+  dias.forEach(d=>{
+    const claveMes = `${d.getFullYear()}-${d.getMonth()}`;
+    const ultimo = gruposMes[gruposMes.length-1];
+    if(ultimo && ultimo.clave===claveMes) ultimo.dias++;
+    else gruposMes.push({ clave: claveMes, dias: 1, fechaRef: new Date(d) });
+  });
+  let filaMeses = `<tr><th class="th-tecnico" rowspan="2" style="width:${ANCHO_TECNICO}px;">Técnico</th>`;
+  gruposMes.forEach(g=>{
+    const nombreMes = g.fechaRef.toLocaleDateString("es-ES", { month:"long", year:"numeric" });
+    filaMeses += `<th colspan="${g.dias}" class="th-mes-header">${nombreMes.charAt(0).toUpperCase()+nombreMes.slice(1)}</th>`;
+  });
+  filaMeses += `</tr>`;
+
+  let head = `<tr>`;
   dias.forEach(d=>{
     const noLaborable = !esDiaLaborable(d);
     const esHoy = isoDate(d)===hoyIso;
     const esLunes = d.getDay()===1;
-    const marcaMes = d.getDate()===1 ? `<span class="th-mes">${MESES_CORTOS[d.getMonth()]}</span>` : "";
     head += `<th class="${noLaborable?'col-finde':''} ${esHoy?'col-hoy':''} ${esLunes?'col-semana-inicio':''}" data-fecha="${isoDate(d)}">
-      ${marcaMes}<span class="th-letra">${LETRAS_DIA[(d.getDay()+6)%7]}</span><span class="th-num">${d.getDate()}</span>
+      <span class="th-letra">${LETRAS_DIA[(d.getDay()+6)%7]}</span><span class="th-num">${d.getDate()}</span>
     </th>`;
   });
   head += `</tr>`;
@@ -3203,7 +3240,7 @@ function renderVistaGeneral(){
     return `<tr class="${idx%2===1?'fila-par':''}">${cells}</tr>`;
   }).join("");
 
-  document.getElementById("generalTable").innerHTML = `<table class="general-table cuadrante-table" style="width:${ANCHO_TECNICO + totalDias*anchoDia}px;"><colgroup><col class="col-tecnico" style="width:${ANCHO_TECNICO}px;">${`<col class="col-dia" style="width:${anchoDia}px;">`.repeat(totalDias)}</colgroup><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+  document.getElementById("generalTable").innerHTML = `<table class="general-table cuadrante-table" style="width:${ANCHO_TECNICO + totalDias*anchoDia}px;"><colgroup><col class="col-tecnico" style="width:${ANCHO_TECNICO}px;">${`<col class="col-dia" style="width:${anchoDia}px;">`.repeat(totalDias)}</colgroup><thead>${filaMeses}${head}</thead><tbody>${rows}</tbody></table>`;
 
   // Posiciona el scroll horizontal para que, por defecto, la primera columna visible
   // sea la semana anterior a la actual (las 4 semanas objetivo empiezan justo ahí).
