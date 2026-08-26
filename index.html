@@ -1396,9 +1396,13 @@ async function syncCalendario(claveCal, calInfo){
   const data = await calendarFetch(`calendars/${encodeURIComponent(calInfo.calendarId)}/events?${params}`);
   const updates = {};
   const fetchedIds = new Set();
+  let conAdjuntosBruto = 0, conAdjuntosValidos = 0;
   (data.items||[]).forEach(ev=>{
     if(ev.status === "cancelled") return;
     fetchedIds.add(ev.id);
+    if(ev.attachments && ev.attachments.length) conAdjuntosBruto++;
+    const adjuntos = (ev.attachments||[]).map(a=>({ titulo: a.title||"Documento", url: a.fileUrl||"" })).filter(a=>a.url);
+    if(adjuntos.length) conAdjuntosValidos++;
     updates[`eventos/${ev.id}`] = {
       calendario: claveCal,
       calendarId: calInfo.calendarId,
@@ -1407,7 +1411,7 @@ async function syncCalendario(claveCal, calInfo){
       start: ev.start?.dateTime || ev.start?.date,
       end: ev.end?.dateTime || ev.end?.date,
       description: ev.description || "",
-      adjuntos: (ev.attachments||[]).map(a=>({ titulo: a.title||"Documento", url: a.fileUrl||"" })).filter(a=>a.url)
+      adjuntos
     };
   });
   // Detectar eventos que ya no existen en Calendar dentro de esta misma ventana de fechas
@@ -1425,7 +1429,7 @@ async function syncCalendario(claveCal, calInfo){
     }
   });
   await update(ref(db), updates);
-  return { sincronizados: fetchedIds.size, borrados };
+  return { sincronizados: fetchedIds.size, borrados, diagnosticoAdjuntos: `${calInfo.nombre}: ${conAdjuntosBruto} evento(s) con adjuntos en Calendar, ${conAdjuntosValidos} guardados con enlace válido` };
 }
 
 /* Sincroniza todos los calendarios configurados. Se usa desde el botón de Admin,
@@ -1454,6 +1458,7 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
             continue;
           }
           r = await syncCalendario(clave, info);
+          if(r.diagnosticoAdjuntos && !r.diagnosticoAdjuntos.startsWith(`${info.nombre}: 0 `)) diagnosticos.push(r.diagnosticoAdjuntos);
         }
         total += r.sincronizados;
         borrados += r.borrados;
