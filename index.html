@@ -1042,6 +1042,18 @@ async function publicarSemana(lunesIso){
   await update(ref(db), { "configuracion/ultimaSemanaPublicadaManual": lunesIso });
   toast("Semana publicada");
 }
+async function despublicarSemana(lunesIso){
+  const auto = limiteAutomaticoPublicacion();
+  const semanaAnterior = parseIsoLocal(lunesIso);
+  semanaAnterior.setDate(semanaAnterior.getDate()-7);
+  if(semanaAnterior <= auto){
+    // Ya no hace falta límite manual: con el automático es suficiente
+    await update(ref(db), { "configuracion/ultimaSemanaPublicadaManual": null });
+  } else {
+    await update(ref(db), { "configuracion/ultimaSemanaPublicadaManual": isoDate(semanaAnterior) });
+  }
+  toast("Semana despublicada");
+}
 function renderPublicacionSemanas(){
   const cont = document.getElementById("publicacionSemanasList");
   if(!cont) return;
@@ -1058,10 +1070,9 @@ function renderPublicacionSemanas(){
     const lunesIso = isoDate(lunes);
     const publicadaAuto = lunes <= auto;
     const publicadaManual = !publicadaAuto && lunes <= visible;
-    const publicada = publicadaAuto || publicadaManual;
     let etiqueta = "";
     if(publicadaAuto) etiqueta = `<span class="muted">Visible por defecto</span>`;
-    else if(publicadaManual) etiqueta = `<span style="color:var(--teal);font-weight:600;">Publicada a mano</span>`;
+    else if(publicadaManual) etiqueta = `<span style="color:var(--teal);font-weight:600;">Publicada a mano</span> <button class="btn btn-ghost" data-despublicar-semana="${lunesIso}">Despublicar</button>`;
     else etiqueta = `<button class="btn btn-amber" data-publicar-semana="${lunesIso}">Publicar semana</button>`;
     return `<div class="event-row">
       <div class="event-fecha">${fmtWeekRange(lunes)}</div>
@@ -1070,6 +1081,9 @@ function renderPublicacionSemanas(){
   }).join("");
   cont.querySelectorAll("[data-publicar-semana]").forEach(btn=>{
     btn.addEventListener("click", ()=> publicarSemana(btn.dataset.publicarSemana));
+  });
+  cont.querySelectorAll("[data-despublicar-semana]").forEach(btn=>{
+    btn.addEventListener("click", ()=> despublicarSemana(btn.dataset.despublicarSemana));
   });
 }
 function fmtHora(iso){
