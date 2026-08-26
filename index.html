@@ -959,7 +959,7 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/calendar.events");
-provider.setCustomParameters({ login_hint: ADMIN_EMAILS[0], prompt: "consent" });
+provider.setCustomParameters({ prompt: "consent" });
 
 let currentUser = null;
 let accessToken = null;
