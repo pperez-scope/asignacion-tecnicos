@@ -1922,6 +1922,16 @@ function render(){
   if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); }
 }
 
+let resizeCuadranteTimeout = null;
+window.addEventListener("resize", ()=>{
+  clearTimeout(resizeCuadranteTimeout);
+  resizeCuadranteTimeout = setTimeout(()=>{
+    if(document.querySelector('nav.tabs button[data-tab="general"]')?.classList.contains("active")){
+      renderVistaGeneral();
+    }
+  }, 200);
+});
+
 function renderSinCubrir(){
   const cont = document.getElementById("sincubrirList");
   const eventos = Object.entries(STATE.eventos)
@@ -3135,7 +3145,14 @@ function renderVistaGeneral(){
     dias.push(d);
   }
 
-  let head = `<tr><th class="th-tecnico">Técnico</th>`;
+  // Ancho de columna calculado para que las 4 semanas por defecto (28 días) llenen
+  // exactamente el ancho visible del contenedor, sin necesidad de hacer scroll para verlas.
+  const ANCHO_TECNICO = 130;
+  const wrapEl = document.getElementById("generalTableWrap");
+  const anchoDisponible = wrapEl ? wrapEl.clientWidth : 900;
+  const anchoDia = Math.max(30, Math.floor((anchoDisponible - ANCHO_TECNICO) / 28));
+
+  let head = `<tr><th class="th-tecnico" style="width:${ANCHO_TECNICO}px;">Técnico</th>`;
   dias.forEach(d=>{
     const noLaborable = !esDiaLaborable(d);
     const esHoy = isoDate(d)===hoyIso;
@@ -3186,7 +3203,7 @@ function renderVistaGeneral(){
     return `<tr class="${idx%2===1?'fila-par':''}">${cells}</tr>`;
   }).join("");
 
-  document.getElementById("generalTable").innerHTML = `<table class="general-table cuadrante-table"><colgroup><col class="col-tecnico">${'<col class="col-dia">'.repeat(totalDias)}</colgroup><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+  document.getElementById("generalTable").innerHTML = `<table class="general-table cuadrante-table" style="width:${ANCHO_TECNICO + totalDias*anchoDia}px;"><colgroup><col class="col-tecnico" style="width:${ANCHO_TECNICO}px;">${`<col class="col-dia" style="width:${anchoDia}px;">`.repeat(totalDias)}</colgroup><thead>${head}</thead><tbody>${rows}</tbody></table>`;
 
   // Posiciona el scroll horizontal para que, por defecto, la primera columna visible
   // sea la semana anterior a la actual (las 4 semanas objetivo empiezan justo ahí).
