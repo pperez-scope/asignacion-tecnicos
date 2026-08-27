@@ -1004,7 +1004,8 @@ const MARKER_END = "--- fin técnicos ---";
 const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
 const AUSENCIA_COLORS = { libranza:"#4DAE5B", permiso:"#3FB8A6", vacaciones:"#D6453B", oficina:"#E8A23D", manual:"#8F7CC7", teletrabajo:"#4A7FC9", mites:"#8E5FC7", bajaMedica:"#9AA0A6" };
 const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo", mites:"Mites", bajaMedica:"Baja médica" };
-const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
+const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–18:00" };
+const DESCANSO_OFICINA_DEFECTO_MIN = 60;
 // Colores fijos por nombre de calendario, para que coincidan siempre en Cuadrante y en Calendarios.
 // Si un calendario nuevo no está en esta lista, se le asigna un color automático (colorFor) como hasta ahora.
 const COLOR_CALENDARIO_POR_NOMBRE = {
@@ -1639,6 +1640,7 @@ document.getElementById("btnArreglarTeletrabajo").addEventListener("click", asyn
     Object.entries(porFecha||{}).forEach(([fecha, datos])=>{
       if(datos.tipo==="teletrabajo" && !datos.horario){
         updates[`ausencias/${tid}/${fecha}/horario`] = horarioOficinaDefecto(nombreTecnico);
+        if(!datos.descansoMinutos) updates[`ausencias/${tid}/${fecha}/descansoMinutos`] = DESCANSO_OFICINA_DEFECTO_MIN;
         corregidas++;
       }
     });
@@ -2825,6 +2827,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         <div class="turno-cliente">Oficina Scope</div>
         <div class="turno-horario" style="font-size:12px;">${horarioOficinaDefecto(nombreTecnico)}</div>
         <div class="turno-lugar">📍 Scope</div>
+        <div class="turno-descanso">☕ ${DESCANSO_OFICINA_DEFECTO_MIN} min descanso</div>
         <div class="turno-nota">Por defecto</div>
       </div>`;
     }
@@ -2880,7 +2883,7 @@ function horasDiaTecnico(tecnicoId, fechaIso){
   if(esDiaLaborable(parseIsoLocal(fechaIso))){
     const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
     if(SIN_OFICINA_DEFECTO.includes(nombreTecnico)) return 0;
-    return horasDesdeTextoLibre(horarioOficinaDefecto(nombreTecnico));
+    return Math.max(0, horasDesdeTextoLibre(horarioOficinaDefecto(nombreTecnico)) - DESCANSO_OFICINA_DEFECTO_MIN/60);
   }
   return 0;
 }
@@ -2915,6 +2918,23 @@ function parseRangosMultiples(str){
   return rangos;
 }
 
+/* Rango horario de un evento para un técnico: usa el horario que le pusiste al asignarlo;
+   si no tiene (se asignó sin especificar horario), usa el horario real del evento como respaldo. */
+function rangoEventoConFallback(datos, ev){
+  const rango = parseRangoMinutos(datos.horario);
+  if(rango) return rango;
+  if(ev.start && ev.start.includes("T")){
+    const inicio = new Date(ev.start).getHours()*60 + new Date(ev.start).getMinutes();
+    let fin = inicio + 60;
+    if(ev.end && ev.end.includes("T")){
+      fin = new Date(ev.end).getHours()*60 + new Date(ev.end).getMinutes();
+      if(fin <= inicio) fin += 24*60;
+    }
+    return { inicio, fin };
+  }
+  return null; // evento de todo el día sin hora: no se puede posicionar en la franja horaria
+}
+
 function calcularSegmentosDia(tecnicoId, fechaIso){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
@@ -2926,19 +2946,20 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
   if(hayPresencial){
     eventosDia.forEach(([id,ev])=>{
       const datos = STATE.asignaciones[id][tecnicoId];
-      const rango = parseRangoMinutos(datos.horario);
-      if(rango) segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, datos, ev });
+      const rango = rangoEventoConFallback(datos, ev);
+      segmentos.push({ inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, datos, ev });
     });
     return segmentos;
   }
 
   // Sin evento presencial: calculamos el/los bloque(s) base (ausencia con horario, u Oficina Scope
   // por defecto) — puede haber más de un tramo si el horario es partido (con descanso a mediodía).
-  let baseRangos = [], baseLabel = "", baseColor = "";
+  let baseRangos = [], baseLabel = "", baseColor = "", baseDescanso = null;
   if(ausencia && (ausencia.tipo==="oficina"||ausencia.tipo==="manual"||ausencia.tipo==="teletrabajo"||ausencia.tipo==="mites") && ausencia.horario){
     baseRangos = parseRangosMultiples(ausencia.horario);
     baseLabel = AUSENCIA_LABELS[ausencia.tipo];
     baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : AUSENCIA_COLORS[ausencia.tipo];
+    baseDescanso = ausencia.descansoMinutos || null;
   } else if(ausencia){
     // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
     segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] });
@@ -2947,10 +2968,11 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
     baseLabel = "Oficina Scope";
     baseColor = AUSENCIA_COLORS.oficina;
+    baseDescanso = DESCANSO_OFICINA_DEFECTO_MIN;
   }
 
   const eventosOnline = eventosDia
-    .map(([id,ev])=>({ id, ev, rango: parseRangoMinutos(STATE.asignaciones[id][tecnicoId].horario) }))
+    .map(([id,ev])=>({ id, ev, rango: rangoEventoConFallback(STATE.asignaciones[id][tecnicoId], ev) }))
     .filter(x=>x.rango)
     .sort((a,b)=> a.rango.inicio - b.rango.inicio);
 
@@ -2962,12 +2984,12 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
         const inicioEv = Math.max(rango.inicio, baseRango.inicio);
         const finEv = Math.min(rango.fin, baseRango.fin);
         if(inicioEv >= finEv) return; // este tramo online no se solapa con este tramo base
-        if(inicioEv > cursor) segmentos.push({ inicio:cursor, fin:inicioEv, tipo:"base", label:baseLabel, color:baseColor });
+        if(inicioEv > cursor) segmentos.push({ inicio:cursor, fin:inicioEv, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso });
         segmentos.push({ inicio:inicioEv, fin:finEv, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
         cursor = Math.max(cursor, finEv);
         eventosConsumidos.add(id);
       });
-      if(cursor < baseRango.fin) segmentos.push({ inicio:cursor, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor });
+      if(cursor < baseRango.fin) segmentos.push({ inicio:cursor, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso });
     });
     // Eventos online que caen fuera de todos los tramos base (antes, después, o en el descanso)
     eventosOnline.forEach(({id,ev,rango})=>{
@@ -2995,12 +3017,19 @@ function segmentosATarjetasHTML(segmentos){
     if(seg.tipo==="todo-el-dia"){
       return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}</div>`;
     }
-    const horaTxt = `${minutosAHora(seg.inicio%1440)} → ${minutosAHora(seg.fin%1440)}`;
     const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="presencial" ? "🏢 " : "");
+    if(seg.inicio==null || seg.fin==null){
+      // Evento de todo el día sin hora concreta (no se puede posicionar en la franja horaria)
+      return `<div class="turno-block" style="border-left-color:${seg.color};">
+        <div class="turno-cliente">${icono}${seg.label}</div>
+      </div>`;
+    }
+    const horaTxt = `${minutosAHora(seg.inicio%1440)} → ${minutosAHora(seg.fin%1440)}`;
     return `<div class="turno-block" style="border-left-color:${seg.color};">
       <div class="turno-horario">${horaTxt}</div>
       ${timelineHTML({ inicio:seg.inicio, fin:seg.fin })}
       <div class="turno-cliente">${icono}${seg.label}</div>
+      ${seg.descansoMinutos ? `<div class="turno-descanso">☕ ${seg.descansoMinutos} min descanso</div>` : ""}
     </div>`;
   }).join("");
 }
@@ -3217,12 +3246,12 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
       filasDia.push({ especial:true, texto:"FINDE / FESTIVO", color:"#8FA6A3" });
     } else if(!SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
       const horarioDef = horarioOficinaDefecto(nombreTecnico);
-      const horasFila = horasDesdeTextoLibre(horarioDef);
+      const horasFila = Math.max(0, horasDesdeTextoLibre(horarioDef) - DESCANSO_OFICINA_DEFECTO_MIN/60);
       totalSemana += horasFila; totalMes += horasFila;
       const partes = horarioDef.split(/[–-]/);
       filasDia.push({
         turno:"", lugar:"Scope", entrada: partes[0]||"", salida: partes.length>1?partes[partes.length-1]:"",
-        descanso:"", asignacion:"", horaActo:"", acto:"Oficina Scope (por defecto)",
+        descanso:`${DESCANSO_OFICINA_DEFECTO_MIN} min`, asignacion:"", horaActo:"", acto:"Oficina Scope (por defecto)",
         horas: fmtHorasHHMM(horasFila), colorKey:null
       });
     } else {
@@ -3329,7 +3358,7 @@ function renderEditorDiaTecnico(){
   const ausenciaReal = STATE.ausencias[tecnicoId]?.[fechaIso];
   const esDefectoOficina = !ausenciaReal && esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico);
   // Partimos de la entrada real si existe; si no, del valor por defecto de Oficina Scope (si aplica)
-  const base = ausenciaReal || (esDefectoOficina ? { tipo:"oficina", horario: horarioOficinaDefecto(nombreTecnico), lugar:"Scope" } : { tipo:"libranza" });
+  const base = ausenciaReal || (esDefectoOficina ? { tipo:"oficina", horario: horarioOficinaDefecto(nombreTecnico), lugar:"Scope", descansoMinutos: DESCANSO_OFICINA_DEFECTO_MIN } : { tipo:"libranza" });
 
   cont.innerHTML = `
     <p style="margin-top:0;"><strong>${nombreTecnico}</strong> · ${fechaLegible}
