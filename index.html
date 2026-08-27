@@ -388,6 +388,21 @@
   .day-num{font-weight:700;color:var(--ink-soft);font-size:10px;}
   .day-cell-editable{cursor:pointer;transition:outline .1s ease;}
   .day-cell-editable:hover{outline:2px solid var(--teal);outline-offset:-2px;}
+
+  .dia-picker-cell{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:4px;
+    font-size:11px;
+    cursor:pointer;
+    user-select:none;
+    transition:background .1s ease, outline .1s ease;
+  }
+  .dia-picker-cell:hover{outline:2px solid var(--teal);outline-offset:-2px;}
+  .dia-picker-cell.es-hoy{border-color:var(--teal);border-width:2px;}
+  .dia-picker-cell.seleccionado{background:var(--amber);border-color:var(--amber);}
+  .dia-picker-cell.seleccionado .day-num{color:#fff;font-weight:700;}
   .day-cell.tiene-evento{background:#FDFCFA;border-color:var(--amber);}
   .day-cell.ausencia-libranza{background:#EDEDED;}
   .day-cell.ausencia-permiso{background:#FDE7E1;}
@@ -975,7 +990,7 @@ const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–14:00 y 15:00–18:00" };
 // Si un calendario nuevo no está en esta lista, se le asigna un color automático (colorFor) como hasta ahora.
 const COLOR_CALENDARIO_POR_NOMBRE = {
   "producción scope": "#7B4B2A",
-  "fundación juan march": "#5C3A5C",
+  "fundación juan march": "#8E5F8E",
   "ateneo": "#2CA6A4",
   "formación": "#E8709A"
 };
@@ -1159,6 +1174,8 @@ let editandoTecnicoId = null;
 let diaTecnicoEditando = null; // {tecnicoId, fecha} cuando el editor de día está abierto en Vista técnico
 let ultimoTecnicoAusenciasForm = null; // recuerda el técnico elegido en el formulario de Otras asignaciones entre envíos
 let fechasSeleccionadasAusencia = []; // fechas (ISO) acumuladas en el formulario de Otras asignaciones, antes de guardar
+let calendarioAusenciaMes = null; // mes mostrado en el mini-calendario de selección de días
+let ultimoDiaClicadoAusencia = null; // para el mayús+clic (seleccionar un rango entero)
 
 /* Genera el HTML de una semana tipo iCal con navegación. onlySinCubrir filtra los ya cubiertos. */
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
@@ -3390,13 +3407,12 @@ function renderAusencias(){
           </select>
         </div>
       </div>
-      <div class="row">
-        <div class="field"><label>Fecha</label><input type="date" id="ausDesde"></div>
-        <div class="field"><label>Hasta (opcional, para añadir un rango seguido de una vez)</label><input type="date" id="ausHasta"></div>
-      </div>
-      <button type="button" class="btn btn-ghost" id="btnAusAnadirFecha" style="margin-bottom:10px;">+ Añadir a la lista de días</button>
       <div class="field">
-        <label>Días que se van a guardar (añade varios sueltos, o rangos, y se guardan todos juntos con la misma categoría)</label>
+        <label>Marca los días en el calendario (clic para añadir/quitar; mayús+clic para marcar un rango entero)</label>
+        <div id="ausCalendarioPicker" class="card" style="padding:10px;margin-bottom:10px;"></div>
+      </div>
+      <div class="field">
+        <label>Días seleccionados</label>
         <div id="ausFechasChips" style="display:flex;flex-wrap:wrap;gap:6px;min-height:34px;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;"></div>
       </div>
       <div class="row hidden" id="ausTipoAsignacionRow">
@@ -3500,27 +3516,77 @@ function renderAusencias(){
         btn.addEventListener("click", ()=>{
           fechasSeleccionadasAusencia = fechasSeleccionadasAusencia.filter(f=>f!==btn.dataset.quitarFechaChip);
           renderChipsAusencia();
+          if(typeof renderCalendarioAusenciaPicker === "function") renderCalendarioAusenciaPicker();
         });
       });
     };
     renderChipsAusencia();
 
-    document.getElementById("btnAusAnadirFecha").addEventListener("click", ()=>{
-      const desde = document.getElementById("ausDesde").value;
-      const hasta = document.getElementById("ausHasta").value;
-      if(!desde) return toast("Elige al menos una fecha");
-      let d = new Date(desde);
-      const fin = new Date(hasta || desde);
-      if(fin < d) return toast("La fecha 'Hasta' no puede ser anterior a 'Fecha'");
-      while(d <= fin){
-        const iso = isoDate(d);
-        if(!fechasSeleccionadasAusencia.includes(iso)) fechasSeleccionadasAusencia.push(iso);
-        d.setDate(d.getDate()+1);
+    if(!calendarioAusenciaMes) calendarioAusenciaMes = startOfWeek(new Date()); // cualquier fecha del mes actual sirve de referencia
+    const renderCalendarioAusenciaPicker = ()=>{
+      const cont = document.getElementById("ausCalendarioPicker");
+      if(!cont) return;
+      const year = calendarioAusenciaMes.getFullYear();
+      const month = calendarioAusenciaMes.getMonth();
+      const diasEnMes = new Date(year, month+1, 0).getDate();
+      const primerDiaSemana = (new Date(year, month, 1).getDay() + 6) % 7; // lunes=0
+      const nombreMes = new Date(year, month, 1).toLocaleDateString("es-ES", { month:"long", year:"numeric" });
+      const hoyIso = isoDate(new Date());
+
+      let html = `<div class="week-nav" style="margin-bottom:8px;">
+        <button type="button" class="btn btn-ghost" id="btnAusMesAnterior">‹</button>
+        <div class="week-range">${nombreMes.charAt(0).toUpperCase()+nombreMes.slice(1)}</div>
+        <button type="button" class="btn btn-ghost" id="btnAusMesSiguiente">›</button>
+      </div><div class="month-grid">`;
+      ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
+      for(let i=0;i<primerDiaSemana;i++) html += `<div></div>`;
+      for(let day=1; day<=diasEnMes; day++){
+        const fechaIso = `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        const seleccionado = fechasSeleccionadasAusencia.includes(fechaIso);
+        const esHoy = fechaIso===hoyIso;
+        html += `<div class="dia-picker-cell ${seleccionado?'seleccionado':''} ${esHoy?'es-hoy':''}" data-dia-picker="${fechaIso}" style="min-height:38px;">
+          <div class="day-num">${day}</div>
+        </div>`;
       }
-      fechasSeleccionadasAusencia.sort();
-      document.getElementById("ausHasta").value = "";
-      renderChipsAusencia();
-    });
+      html += `</div>`;
+      cont.innerHTML = html;
+
+      document.getElementById("btnAusMesAnterior").addEventListener("click", ()=>{
+        calendarioAusenciaMes = new Date(year, month-1, 1);
+        renderCalendarioAusenciaPicker();
+      });
+      document.getElementById("btnAusMesSiguiente").addEventListener("click", ()=>{
+        calendarioAusenciaMes = new Date(year, month+1, 1);
+        renderCalendarioAusenciaPicker();
+      });
+      cont.querySelectorAll("[data-dia-picker]").forEach(celda=>{
+        celda.addEventListener("click", (e)=>{
+          const fechaIso = celda.dataset.diaPicker;
+          if(e.shiftKey && ultimoDiaClicadoAusencia){
+            let ini = ultimoDiaClicadoAusencia, fin = fechaIso;
+            if(ini > fin) [ini, fin] = [fin, ini];
+            let d = parseIsoLocal(ini);
+            const finDate = parseIsoLocal(fin);
+            while(d <= finDate){
+              const iso = isoDate(d);
+              if(!fechasSeleccionadasAusencia.includes(iso)) fechasSeleccionadasAusencia.push(iso);
+              d.setDate(d.getDate()+1);
+            }
+          } else {
+            if(fechasSeleccionadasAusencia.includes(fechaIso)){
+              fechasSeleccionadasAusencia = fechasSeleccionadasAusencia.filter(f=>f!==fechaIso);
+            } else {
+              fechasSeleccionadasAusencia.push(fechaIso);
+            }
+          }
+          ultimoDiaClicadoAusencia = fechaIso;
+          fechasSeleccionadasAusencia.sort();
+          renderCalendarioAusenciaPicker();
+          renderChipsAusencia();
+        });
+      });
+    };
+    renderCalendarioAusenciaPicker();
 
     document.getElementById("btnAddAusencia").addEventListener("click", ()=>{
       const tid = document.getElementById("ausTecnico").value;
@@ -3574,16 +3640,13 @@ function renderAusencias(){
 
       const elTecnico = document.getElementById("ausTecnico");
       const elTipo = document.getElementById("ausTipo");
-      const elDesde = document.getElementById("ausDesde");
-      const elHasta = document.getElementById("ausHasta");
-      if(!elTecnico || !elTipo || !elDesde) return; // formulario no visible (no admin)
+      if(!elTecnico || !elTipo) return; // formulario no visible (no admin)
 
       elTecnico.value = tid;
       elTipo.value = datos.tipo;
-      elDesde.value = fecha;
-      elHasta.value = "";
       elTipo.dispatchEvent(new Event("change"));
 
+      calendarioAusenciaMes = parseIsoLocal(fecha);
       fechasSeleccionadasAusencia = [fecha];
       const contChips = document.getElementById("ausFechasChips");
       if(contChips){
