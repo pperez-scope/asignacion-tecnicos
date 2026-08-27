@@ -596,6 +596,8 @@
     box-shadow:inset -1px -1px 0 0 var(--line), inset 2px 0 0 0 var(--navy);
   }
   table.cuadrante-table th.col-hoy.col-semana-inicio{box-shadow:inset -1px -1px 0 0 var(--line), inset 2px 0 0 0 var(--amber), inset -2px 0 0 0 var(--amber);}
+  table.cuadrante-table td.cuadrante-celda-editable{cursor:pointer;}
+  table.cuadrante-table td.cuadrante-celda-editable:hover .celda-color{outline:2px solid var(--navy);outline-offset:-2px;}
 
   /* Fila de mes: cabecera propia por encima de la fila de días, con las dos filas fijas
      (sticky) al hacer scroll vertical, apiladas una debajo de otra. */
@@ -2962,6 +2964,29 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
 }
 
 /* ---------- Editor de día individual desde Vista técnico (solo admin) ---------- */
+/* Navega desde una celda del Cuadrante a la asignación real para poder editarla:
+   al evento en Calendarios si ese día tiene uno, o al editor de día de Vista técnico si no. */
+function irAEditarDesdeCuadrante(tid, fechaIso){
+  if(!isAdmin) return;
+  const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
+  if(eventosDia.length){
+    const [id, ev] = eventosDia[0];
+    eventoSeleccionado = id; editandoTecnicoId = null;
+    weekState.asignar = startOfWeek(new Date(ev.start));
+    const mesInputAsig = document.getElementById("mesAsignaciones");
+    if(mesInputAsig) mesInputAsig.value = ev.start.slice(0,7);
+    document.querySelector('nav.tabs button[data-tab="asignar"]').click();
+  } else {
+    document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
+    const selTec = document.getElementById("selectTecnico");
+    if(selTec && selTec.value !== tid){
+      selTec.value = tid;
+      renderVistaTecnico();
+    }
+    abrirEditorDiaTecnico(tid, fechaIso);
+  }
+}
+
 function abrirEditorDiaTecnico(tecnicoId, fechaIso){
   diaTecnicoEditando = { tecnicoId, fechaIso };
   document.getElementById("editorDiaTecnicoCard").classList.remove("hidden");
@@ -3221,27 +3246,38 @@ function renderVistaGeneral(){
       }
       const ausencia = STATE.ausencias[tid]?.[fechaIso];
       const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
+      let hayAlgoQueEditar = false;
       if(ausencia){
         color = AUSENCIA_COLORS[ausencia.tipo];
         titulo = AUSENCIA_LABELS[ausencia.tipo];
+        hayAlgoQueEditar = true;
       } else if(eventosDia.length){
         const ev = eventosDia[0][1];
         color = colorFor(ev.calendario);
         clientesUsados.add(ev.calendario);
         titulo = ev.summary;
+        hayAlgoQueEditar = true;
       } else if(noLaborable){
         color = "#DCDCDC";
         titulo = "Festivo / fin de semana";
       } else if(!SIN_OFICINA_DEFECTO.includes(t.nombre)){
         color = AUSENCIA_COLORS.oficina;
         titulo = "Oficina Scope (por defecto)";
+        hayAlgoQueEditar = true;
       }
-      cells += `<td class="${claseExtra}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
+      const clickable = isAdmin && hayAlgoQueEditar;
+      cells += `<td class="${claseExtra} ${clickable?'cuadrante-celda-editable':''}" title="${titulo}" ${clickable?`data-cuadrante-tid="${tid}" data-cuadrante-fecha="${fechaIso}"`:""}><span class="celda-color" style="background:${color};"></span></td>`;
     });
     return `<tr class="${idx%2===1?'fila-par':''}">${cells}</tr>`;
   }).join("");
 
   document.getElementById("generalTable").innerHTML = `<table class="general-table cuadrante-table" style="width:${ANCHO_TECNICO + totalDias*anchoDia}px;"><colgroup><col class="col-tecnico" style="width:${ANCHO_TECNICO}px;">${`<col class="col-dia" style="width:${anchoDia}px;">`.repeat(totalDias)}</colgroup><thead>${filaMeses}${head}</thead><tbody>${rows}</tbody></table>`;
+
+  document.querySelectorAll(".cuadrante-celda-editable").forEach(celda=>{
+    celda.addEventListener("click", ()=>{
+      irAEditarDesdeCuadrante(celda.dataset.cuadranteTid, celda.dataset.cuadranteFecha);
+    });
+  });
 
   // Posiciona el scroll horizontal para que, por defecto, la primera columna visible
   // sea la semana anterior a la actual (las 4 semanas objetivo empiezan justo ahí).
