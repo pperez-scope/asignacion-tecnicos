@@ -825,6 +825,11 @@
       <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
     </div>
     <div class="card">
+      <p class="muted" style="margin-top:0;">Las entradas de Teletrabajo guardadas antes de que el horario se rellenara solo no cuentan horas. Este botón les añade el horario estándar del técnico correspondiente (respetando jornadas reducidas) a todas las que estén vacías, de una vez.</p>
+      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarTeletrabajo">Rellenar horario en Teletrabajo sin horario</button>
+      <p class="muted" id="arreglarTeletrabajoStatus"></p>
+    </div>
+    <div class="card">
       <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Calendarios</h3>
       <p class="muted" style="margin-top:0;">Añade aquí un nuevo calendario de Google (el ID lo encuentras en Google Calendar → los tres puntos junto al calendario → Configuración y uso compartido → Integrar calendario).</p>
       <div class="row row-compact">
@@ -1609,6 +1614,28 @@ document.getElementById("btnSeedTecnicos").addEventListener("click", async ()=>{
   }
   await update(ref(db), updates);
   toast(`${nuevos} técnico${nuevos>1?"s":""} añadido${nuevos>1?"s":""}`);
+});
+
+document.getElementById("btnArreglarTeletrabajo").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("arreglarTeletrabajoStatus");
+  const updates = {};
+  let corregidas = 0;
+  Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
+    const nombreTecnico = STATE.tecnicos[tid]?.nombre || "";
+    Object.entries(porFecha||{}).forEach(([fecha, datos])=>{
+      if(datos.tipo==="teletrabajo" && !datos.horario){
+        updates[`ausencias/${tid}/${fecha}/horario`] = horarioOficinaDefecto(nombreTecnico);
+        corregidas++;
+      }
+    });
+  });
+  if(corregidas===0){
+    statusEl.textContent = "No había ninguna entrada de Teletrabajo sin horario. Todo en orden.";
+    return;
+  }
+  await update(ref(db), updates);
+  statusEl.textContent = `${corregidas} entrada${corregidas>1?"s":""} de Teletrabajo corregida${corregidas>1?"s":""} con el horario estándar de cada técnico.`;
+  toast(`${corregidas} entrada${corregidas>1?"s":""} corregida${corregidas>1?"s":""}`);
 });
 
 /* ---------- GESTIÓN DE CALENDARIOS ---------- */
@@ -3166,7 +3193,7 @@ function renderEditorDiaTecnico(){
     descansoRow.classList.toggle("hidden", !necesitaHorario);
     tipoAsigRow.classList.toggle("hidden", !necesitaLugar);
     notaRow.classList.toggle("hidden", tipo!=="manual" && tipo!=="mites");
-    if(tipo==="oficina" && !horarioInput.value) horarioInput.value = horarioOficinaDefecto(nombreTecnico);
+    if((tipo==="oficina"||tipo==="teletrabajo") && !horarioInput.value) horarioInput.value = horarioOficinaDefecto(nombreTecnico);
     if(tipo==="oficina" && !document.getElementById("editorDiaLugar").value) document.getElementById("editorDiaLugar").value = "Scope";
     if(necesitaHorario) evaluarDescansoAuto();
   };
@@ -3493,7 +3520,10 @@ function renderAusencias(){
       tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
       lugarRow.classList.toggle("hidden", !necesitaLugar);
       notaRow.classList.toggle("hidden", tipo!=="manual" && tipo!=="mites");
-      if(tipo==="oficina" && !horarioInput.value) horarioInput.value = AUSENCIA_HORARIO_DEFECTO.oficina;
+      if((tipo==="oficina"||tipo==="teletrabajo") && !horarioInput.value){
+        const nombreTecSel = STATE.tecnicos[document.getElementById("ausTecnico").value]?.nombre || "";
+        horarioInput.value = horarioOficinaDefecto(nombreTecSel);
+      }
       if(tipo==="oficina" && !lugarInput.value) lugarInput.value = "Scope";
       if(necesitaHorario) evaluarDescansoAuto();
     };
