@@ -2885,32 +2885,36 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     eventosDia.forEach(([id,ev])=>{
       const datos = STATE.asignaciones[id][tecnicoId];
       const rango = rangoEventoConFallback(datos, ev);
-      segmentos.push({ inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, datos, ev });
+      segmentos.push({ inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
     });
     return segmentos;
   }
 
   // Sin evento presencial: calculamos el/los bloque(s) base (ausencia con horario, u Oficina Scope
   // por defecto) — puede haber más de un tramo si el horario es partido (con descanso a mediodía).
-  let baseRangos = [], baseLabel = "", baseColor = "", baseDescanso = null;
+  let baseRangos = [], baseLabel = "", baseColor = "", baseDescanso = null, baseLugar = "", baseSala = "", baseTipoAsignacion = "";
   if(ausencia && (ausencia.tipo==="oficina"||ausencia.tipo==="manual"||ausencia.tipo==="teletrabajo"||ausencia.tipo==="mites") && ausencia.horario){
     baseRangos = parseRangosMultiples(ausencia.horario);
     baseLabel = AUSENCIA_LABELS[ausencia.tipo];
     baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : AUSENCIA_COLORS[ausencia.tipo];
     baseDescanso = ausencia.descansoMinutos || null;
+    baseLugar = ausencia.lugar || "";
+    baseSala = ausencia.sala || "";
+    baseTipoAsignacion = ausencia.tipoAsignacion || "";
   } else if(ausencia){
     // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
-    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] });
+    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo], nota:ausencia.nota||"" });
     return segmentos;
   } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
     baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
     baseLabel = "Oficina Scope";
     baseColor = AUSENCIA_COLORS.oficina;
     baseDescanso = descansoOficinaDefecto(nombreTecnico);
+    baseLugar = "Scope";
   }
 
   const eventosOnline = eventosDia
-    .map(([id,ev])=>({ id, ev, rango: rangoEventoConFallback(STATE.asignaciones[id][tecnicoId], ev) }))
+    .map(([id,ev])=>({ id, ev, datos: STATE.asignaciones[id][tecnicoId], rango: rangoEventoConFallback(STATE.asignaciones[id][tecnicoId], ev) }))
     .filter(x=>x.rango)
     .sort((a,b)=> a.rango.inicio - b.rango.inicio);
 
@@ -2918,10 +2922,10 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
   // daba la sensación confusa de que había un descanso distinto en cada mitad. En vez de eso,
   // el/los evento(s) online se apilan como tarjetas propias junto a él, en orden cronológico.
   baseRangos.forEach(baseRango=>{
-    segmentos.push({ inicio:baseRango.inicio, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso });
+    segmentos.push({ inicio:baseRango.inicio, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso, lugar:baseLugar, sala:baseSala, tipoAsignacion:baseTipoAsignacion });
   });
-  eventosOnline.forEach(({ev,rango})=>{
-    segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
+  eventosOnline.forEach(({ev,rango,datos})=>{
+    segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
   });
   segmentos.sort((a,b)=> a.inicio-b.inicio);
 
@@ -3122,70 +3126,47 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
       continue;
     }
 
-    const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
-    const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
+    const segmentos = calcularSegmentosDia(tecnicoId, fechaIso);
     const noLaborable = !esDiaLaborable(diaDate);
     let filasDia = [];
 
-    if(eventosDia.length){
-      eventosDia.forEach(([id,ev])=>{
-        const datos = STATE.asignaciones[id][tecnicoId];
-        const rango = parseRangoMinutos(datos.horario);
-        const turno = rango && rango.inicio < 15*60 ? "Mañana" : "Tarde";
-        const horasFila = duracionTurnoHoras(datos);
+    if(segmentos.length===1 && segmentos[0].tipo==="todo-el-dia"){
+      const seg = segmentos[0];
+      filasDia.push({ especial:true, texto: seg.label + (seg.nota?` — ${seg.nota}`:""), color: seg.color });
+    } else if(segmentos.length){
+      segmentos.forEach(seg=>{
+        const horasFila = (seg.inicio!=null && seg.fin!=null)
+          ? Math.max(0, (seg.fin-seg.inicio)/60 - (seg.descansoMinutos||0)/60)
+          : 0;
         totalSemana += horasFila; totalMes += horasFila;
+        const turno = (seg.inicio!=null && seg.inicio < 15*60) ? "Mañana" : (seg.inicio!=null ? "Tarde" : "");
         let horaActo = "";
-        if(rango && ev.start && ev.start.includes("T")){
-          const inicioActoMin = new Date(ev.start).getHours()*60+new Date(ev.start).getMinutes();
-          if(rango.inicio !== inicioActoMin) horaActo = fmtHora(ev.start);
+        if(seg.tipo==="evento" && seg.ev && seg.inicio!=null && seg.ev.start && seg.ev.start.includes("T")){
+          const inicioActoMin = new Date(seg.ev.start).getHours()*60+new Date(seg.ev.start).getMinutes();
+          if(seg.inicio !== inicioActoMin) horaActo = fmtHora(seg.ev.start);
         }
         filasDia.push({
-          turno, lugar:[datos.lugar,datos.sala].filter(Boolean).join(" · "),
-          entrada: rango?minutosAHora(rango.inicio):"", salida: rango?minutosAHora(rango.fin):"",
-          descanso: datos.descansoMinutos?`${datos.descansoMinutos} min`:"",
-          asignacion: datos.tipoAsignacion||"",
-          horaActo, acto: ev.summary, horas: fmtHorasHHMM(horasFila), color: colorFor(ev.calendario),
-          adjunto: (ev.adjuntos && ev.adjuntos[0]) ? ev.adjuntos[0].url : ""
+          turno, lugar:[seg.lugar,seg.sala].filter(Boolean).join(" · "),
+          entrada: seg.inicio!=null?minutosAHora(seg.inicio%1440):"", salida: seg.fin!=null?minutosAHora(seg.fin%1440):"",
+          descanso: seg.descansoMinutos?`${seg.descansoMinutos} min`:"",
+          asignacion: seg.tipoAsignacion||"",
+          horaActo, acto: seg.label + (seg.tipo==="base" && seg.label==="Oficina Scope" && !STATE.ausencias[tecnicoId]?.[fechaIso] ? " (por defecto)" : ""),
+          horas: fmtHorasHHMM(horasFila), color: seg.color,
+          adjunto: (seg.ev?.adjuntos && seg.ev.adjuntos[0]) ? seg.ev.adjuntos[0].url : ""
         });
       });
-    } else if(ausencia){
-      if(["libranza","permiso","vacaciones","bajaMedica"].includes(ausencia.tipo)){
-        filasDia.push({ especial:true, texto: AUSENCIA_LABELS[ausencia.tipo], color: AUSENCIA_COLORS[ausencia.tipo] });
-      } else {
-        const horasFila = horasDesdeTextoLibre(ausencia.horario);
-        totalSemana += horasFila; totalMes += horasFila;
-        const partes = (ausencia.horario||"").split(/[–-]/);
-        const colorFila = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : AUSENCIA_COLORS[ausencia.tipo];
-        filasDia.push({
-          turno:"", lugar: ausencia.lugar||"", entrada: partes[0]||"", salida: partes.length>1?partes[partes.length-1]:"",
-          descanso: ausencia.descansoMinutos?`${ausencia.descansoMinutos} min`:"",
-          asignacion: ausencia.tipoAsignacion||"",
-          horaActo:"", acto: AUSENCIA_LABELS[ausencia.tipo] + (ausencia.nota?` — ${ausencia.nota}`:""),
-          horas: fmtHorasHHMM(horasFila), color: colorFila
-        });
-      }
     } else if(noLaborable){
       filasDia.push({ especial:true, texto:"FINDE / FESTIVO", color:"#8FA6A3" });
-    } else if(!SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
-      const horarioDef = horarioOficinaDefecto(nombreTecnico);
-      const horasFila = Math.max(0, horasDesdeTextoLibre(horarioDef) - descansoOficinaDefecto(nombreTecnico)/60);
-      totalSemana += horasFila; totalMes += horasFila;
-      const partes = horarioDef.split(/[–-]/);
-      filasDia.push({
-        turno:"", lugar:"Scope", entrada: partes[0]||"", salida: partes.length>1?partes[partes.length-1]:"",
-        descanso:`${descansoOficinaDefecto(nombreTecnico)} min`, asignacion:"", horaActo:"", acto:"Oficina Scope (por defecto)",
-        horas: fmtHorasHHMM(horasFila), color: AUSENCIA_COLORS.oficina
-      });
     } else {
       filasDia.push({ especial:true, texto:"Sin asignar", color:"#EFEFEF" });
     }
 
     filasDia.forEach((f,idx)=>{
       const diaCell = idx===0 ? `<td rowspan="${filasDia.length}">${diaTxt}</td><td rowspan="${filasDia.length}">${fechaTxt}</td>` : "";
+      const fondoPastel = tintClaro(f.color, 0.85);
       if(f.especial){
-        filas += `<tr>${diaCell}<td colspan="8" style="text-align:center;background:${f.color};color:#fff;font-weight:700;">${f.texto}</td><td>00:00</td></tr>`;
+        filas += `<tr style="background:${fondoPastel};border-left:4px solid ${f.color};">${diaCell}<td colspan="8" style="text-align:center;font-weight:700;">${f.texto}</td><td>00:00</td></tr>`;
       } else {
-        const fondoPastel = tintClaro(f.color, 0.85);
         filas += `<tr style="background:${fondoPastel};border-left:4px solid ${f.color};">
           ${diaCell}
           <td>${f.turno}</td><td style="white-space:normal;text-align:left;">${f.lugar}</td>
