@@ -1158,6 +1158,7 @@ let eventoSeleccionado = null;
 let editandoTecnicoId = null;
 let diaTecnicoEditando = null; // {tecnicoId, fecha} cuando el editor de día está abierto en Vista técnico
 let ultimoTecnicoAusenciasForm = null; // recuerda el técnico elegido en el formulario de Otras asignaciones entre envíos
+let fechasSeleccionadasAusencia = []; // fechas (ISO) acumuladas en el formulario de Otras asignaciones, antes de guardar
 
 /* Genera el HTML de una semana tipo iCal con navegación. onlySinCubrir filtra los ya cubiertos. */
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
@@ -1861,23 +1862,37 @@ async function desasignarTecnico(eventId, tecnicoId){
 }
 
 /* ---------- AUSENCIAS ---------- */
+function construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala){
+  const entrada = { tipo };
+  if(horario) entrada.horario = horario;
+  if(nota) entrada.nota = nota;
+  if(descansoMinutos) entrada.descansoMinutos = descansoMinutos;
+  if(tipoAsignacion) entrada.tipoAsignacion = tipoAsignacion;
+  if(lugar) entrada.lugar = lugar;
+  if(sala) entrada.sala = sala;
+  return entrada;
+}
 async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala){
   const updates = {};
   let d = new Date(fechaInicio);
   const fin = new Date(fechaFin || fechaInicio);
   while(d <= fin){
-    const entrada = { tipo };
-    if(horario) entrada.horario = horario;
-    if(nota) entrada.nota = nota;
-    if(descansoMinutos) entrada.descansoMinutos = descansoMinutos;
-    if(tipoAsignacion) entrada.tipoAsignacion = tipoAsignacion;
-    if(lugar) entrada.lugar = lugar;
-    if(sala) entrada.sala = sala;
-    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = entrada;
+    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala);
     d.setDate(d.getDate()+1);
   }
   await update(ref(db), updates);
   toast("Guardado");
+}
+/* Igual que addAusencia, pero para una lista de fechas sueltas (no correlativas),
+   por ejemplo varios días de teletrabajo alternos en el mismo mes. */
+async function addAusenciaVariasFechas(tecnicoId, fechas, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala){
+  if(!fechas.length) return;
+  const updates = {};
+  fechas.forEach(fecha=>{
+    updates[`ausencias/${tecnicoId}/${fecha}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala);
+  });
+  await update(ref(db), updates);
+  toast(`Guardado en ${fechas.length} día${fechas.length>1?"s":""}`);
 }
 async function removeAusencia(tecnicoId, fecha){
   await remove(ref(db, `ausencias/${tecnicoId}/${fecha}`));
@@ -3376,8 +3391,13 @@ function renderAusencias(){
         </div>
       </div>
       <div class="row">
-        <div class="field"><label>Desde</label><input type="date" id="ausDesde"></div>
-        <div class="field"><label>Hasta (opcional, si es un solo día déjalo vacío)</label><input type="date" id="ausHasta"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="ausDesde"></div>
+        <div class="field"><label>Hasta (opcional, para añadir un rango seguido de una vez)</label><input type="date" id="ausHasta"></div>
+      </div>
+      <button type="button" class="btn btn-ghost" id="btnAusAnadirFecha" style="margin-bottom:10px;">+ Añadir a la lista de días</button>
+      <div class="field">
+        <label>Días que se van a guardar (añade varios sueltos, o rangos, y se guardan todos juntos con la misma categoría)</label>
+        <div id="ausFechasChips" style="display:flex;flex-wrap:wrap;gap:6px;min-height:34px;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;"></div>
       </div>
       <div class="row hidden" id="ausTipoAsignacionRow">
         <div class="field">
@@ -3466,11 +3486,45 @@ function renderAusencias(){
     chkDescanso.addEventListener("change", ()=>{ minutosDescanso.disabled = !chkDescanso.checked; });
     actualizarCamposTipo();
 
+    const renderChipsAusencia = ()=>{
+      const cont = document.getElementById("ausFechasChips");
+      if(!cont) return;
+      if(fechasSeleccionadasAusencia.length===0){
+        cont.innerHTML = `<span class="muted" style="font-size:12px;">Todavía no has añadido ningún día.</span>`;
+        return;
+      }
+      cont.innerHTML = fechasSeleccionadasAusencia.map(f=>
+        `<span class="chip">${f}<button type="button" data-quitar-fecha-chip="${f}" title="Quitar">✕</button></span>`
+      ).join("");
+      cont.querySelectorAll("[data-quitar-fecha-chip]").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          fechasSeleccionadasAusencia = fechasSeleccionadasAusencia.filter(f=>f!==btn.dataset.quitarFechaChip);
+          renderChipsAusencia();
+        });
+      });
+    };
+    renderChipsAusencia();
+
+    document.getElementById("btnAusAnadirFecha").addEventListener("click", ()=>{
+      const desde = document.getElementById("ausDesde").value;
+      const hasta = document.getElementById("ausHasta").value;
+      if(!desde) return toast("Elige al menos una fecha");
+      let d = new Date(desde);
+      const fin = new Date(hasta || desde);
+      if(fin < d) return toast("La fecha 'Hasta' no puede ser anterior a 'Fecha'");
+      while(d <= fin){
+        const iso = isoDate(d);
+        if(!fechasSeleccionadasAusencia.includes(iso)) fechasSeleccionadasAusencia.push(iso);
+        d.setDate(d.getDate()+1);
+      }
+      fechasSeleccionadasAusencia.sort();
+      document.getElementById("ausHasta").value = "";
+      renderChipsAusencia();
+    });
+
     document.getElementById("btnAddAusencia").addEventListener("click", ()=>{
       const tid = document.getElementById("ausTecnico").value;
       const tipo = tipoSelect.value;
-      const desde = document.getElementById("ausDesde").value;
-      const hasta = document.getElementById("ausHasta").value;
       const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo"||tipo==="mites";
       const necesitaLugar = tipo==="oficina"||tipo==="manual"||tipo==="mites";
       const horario = necesitaHorario ? horarioInput.value : "";
@@ -3479,10 +3533,13 @@ function renderAusencias(){
       const tipoAsignacion = necesitaHorario ? tipoAsignacionSelect.value : "";
       const lugar = necesitaLugar ? lugarInput.value : "";
       const sala = necesitaLugar ? salaInput.value : "";
-      if(!tid || !desde) return toast("Falta técnico o fecha");
+      if(!tid) return toast("Falta el técnico");
+      if(fechasSeleccionadasAusencia.length===0) return toast("Añade al menos un día a la lista");
       if(necesitaHorario && !tipoAsignacion) return toast("Elige el tipo de asignación");
       ultimoTecnicoAusenciasForm = tid;
-      addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala);
+      addAusenciaVariasFechas(tid, [...fechasSeleccionadasAusencia], tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala);
+      fechasSeleccionadasAusencia = [];
+      renderChipsAusencia();
     });
   } else {
     formCont.innerHTML = `<p class="muted" style="margin:0;">Inicia sesión como administrador para añadir o quitar entradas.</p>`;
@@ -3526,6 +3583,16 @@ function renderAusencias(){
       elDesde.value = fecha;
       elHasta.value = "";
       elTipo.dispatchEvent(new Event("change"));
+
+      fechasSeleccionadasAusencia = [fecha];
+      const contChips = document.getElementById("ausFechasChips");
+      if(contChips){
+        contChips.innerHTML = `<span class="chip">${fecha}<button type="button" data-quitar-fecha-chip="${fecha}" title="Quitar">✕</button></span>`;
+        contChips.querySelector("[data-quitar-fecha-chip]")?.addEventListener("click", ()=>{
+          fechasSeleccionadasAusencia = [];
+          contChips.innerHTML = `<span class="muted" style="font-size:12px;">Todavía no has añadido ningún día.</span>`;
+        });
+      }
 
       const elHorario = document.getElementById("ausHorario");
       const elLugar = document.getElementById("ausLugar");
