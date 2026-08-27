@@ -859,9 +859,15 @@
     </div>
     <div class="card">
       <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Informes de servicios</h3>
-      <p class="muted" style="margin-top:0;">Genera un Excel con un formato parecido al que usas ahora a mano, a partir de los eventos y asignaciones ya cargados en la app. Por ahora, solo para el calendario de Fundación Juan March.</p>
+      <p class="muted" style="margin-top:0;">Genera un Excel con un formato parecido al que usas ahora a mano, a partir de los eventos y asignaciones ya cargados en la app.</p>
       <p class="muted">El informe solo puede incluir los meses que ya se han sincronizado con Google Calendar (normalmente, de hoy en adelante). Los meses pasados no aparecerán a menos que se hayan sincronizado antes.</p>
-      <button class="btn btn-amber" id="btnInformeJuanMarch">Descargar informe (Fundación Juan March)</button>
+      <div class="row row-compact">
+        <div class="field" style="max-width:280px;">
+          <label>Calendario</label>
+          <select id="informeCalendarioSelect"></select>
+        </div>
+      </div>
+      <button class="btn btn-amber" id="btnDescargarInforme">Descargar informe</button>
       <p class="muted" id="informeStatus"></p>
     </div>
   </section>
@@ -1722,15 +1728,31 @@ function minutosAHora(mins){
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
-document.getElementById("btnInformeJuanMarch").addEventListener("click", ()=>{
+function poblarSelectorInforme(){
+  const sel = document.getElementById("informeCalendarioSelect");
+  if(!sel) return;
+  const anterior = sel.value;
+  sel.innerHTML = Object.entries(CALENDARIOS).map(([clave,info])=>
+    `<option value="${clave}">${info.nombre}</option>`
+  ).join("");
+  if(anterior && CALENDARIOS[anterior]) sel.value = anterior;
+}
+
+document.getElementById("btnDescargarInforme").addEventListener("click", ()=>{
   const statusEl = document.getElementById("informeStatus");
+  const claveCalendario = document.getElementById("informeCalendarioSelect").value;
+  const infoCalendario = CALENDARIOS[claveCalendario];
+  if(!infoCalendario){
+    statusEl.textContent = "Elige un calendario.";
+    return;
+  }
   if(typeof XLSX === "undefined"){
     statusEl.textContent = "No se pudo cargar el generador de Excel. Revisa la conexión e inténtalo de nuevo.";
     return;
   }
-  const eventosCalendario = Object.entries(STATE.eventos).filter(([,ev])=> ev.calendario==="juanmarch");
+  const eventosCalendario = Object.entries(STATE.eventos).filter(([,ev])=> ev.calendario===claveCalendario && !ev.excluirInforme);
   if(eventosCalendario.length===0){
-    statusEl.textContent = "No hay eventos sincronizados de Fundación Juan March todavía.";
+    statusEl.textContent = `No hay eventos sincronizados de ${infoCalendario.nombre} todavía.`;
     return;
   }
 
@@ -1813,7 +1835,8 @@ document.getElementById("btnInformeJuanMarch").addEventListener("click", ()=>{
   wb.SheetNames.splice(idxTotal,1);
   wb.SheetNames.unshift("TOTAL");
 
-  const nombreArchivo = `Informe_Fundacion_Juan_March_${new Date().toISOString().slice(0,10)}.xlsx`;
+  const nombreArchivoSeguro = infoCalendario.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9]+/g,"_");
+  const nombreArchivo = `Informe_${nombreArchivoSeguro}_${new Date().toISOString().slice(0,10)}.xlsx`;
   XLSX.writeFile(wb, nombreArchivo);
   statusEl.textContent = `Informe descargado: ${nombreArchivo}`;
 });
@@ -1858,6 +1881,10 @@ async function actualizarDescripcionEvento(eventId){
 async function guardarNotaEvento(eventId, texto){
   await update(ref(db, `eventos/${eventId}`), { notaInterna: texto||"" });
   toast("Descripción guardada");
+}
+async function guardarModalidadEvento(eventId, modalidad, excluirInforme){
+  await update(ref(db, `eventos/${eventId}`), { modalidad: modalidad||"", excluirInforme: !!excluirInforme });
+  toast("Guardado");
 }
 async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala, libranzaCompensatoria){
   const updates = {};
@@ -2004,7 +2031,7 @@ function render(){
   if(activeTab==="tecnico") renderVistaTecnico();
   if(activeTab==="general") renderVistaGeneral();
   if(activeTab==="ausencias") renderAusencias();
-  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); }
+  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); poblarSelectorInforme(); }
 }
 
 let resizeCuadranteTimeout = null;
@@ -2333,6 +2360,21 @@ function renderAsignarDetalle(eventId){
     <div style="margin:6px 0 10px;">
       ${evento.adjuntos.map(a=>`<a href="${a.url}" target="_blank" rel="noopener" class="btn btn-teal" style="text-decoration:none;margin:2px 6px 2px 0;display:inline-block;">📎 ${a.titulo}</a>`).join("")}
     </div>` : ""}
+    <div class="row row-compact">
+      <div class="field" style="max-width:220px;">
+        <label>Modalidad</label>
+        <select id="eventoModalidad" ${isAdmin?"":"disabled"}>
+          <option value="" ${!evento.modalidad?"selected":""}>Sin especificar</option>
+          <option value="presencial" ${evento.modalidad==="presencial"?"selected":""}>Presencial</option>
+          <option value="online" ${evento.modalidad==="online"?"selected":""}>Online</option>
+        </select>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;margin:2px 0 12px;">
+      <input type="checkbox" id="eventoExcluirInforme" style="width:auto;" ${evento.excluirInforme?"checked":""} ${isAdmin?"":"disabled"}>
+      No computar como servicio en el informe de este calendario
+    </label>
+    ${isAdmin?`<button class="btn btn-ghost" id="btnGuardarModalidad" style="margin:-6px 0 12px;">Guardar modalidad / informe</button>`:""}
     <div class="field">
       <label>Descripción del evento</label>
       <textarea id="notaEvento" rows="2" placeholder="Notas internas: material especial, punto de encuentro, contacto in situ…" ${isAdmin?"":"disabled"}>${notaActual}</textarea>
@@ -2362,6 +2404,15 @@ function renderAsignarDetalle(eventId){
   if(btnGuardarNota){
     btnGuardarNota.addEventListener("click", ()=>{
       guardarNotaEvento(eventId, document.getElementById("notaEvento").value);
+    });
+  }
+
+  const btnGuardarModalidad = document.getElementById("btnGuardarModalidad");
+  if(btnGuardarModalidad){
+    btnGuardarModalidad.addEventListener("click", ()=>{
+      const modalidad = document.getElementById("eventoModalidad").value;
+      const excluirInforme = document.getElementById("eventoExcluirInforme").checked;
+      guardarModalidadEvento(eventId, modalidad, excluirInforme);
     });
   }
 
@@ -2695,6 +2746,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
         ${horarioDistintoDelActo ? `<div class="turno-acto-hora">🎬 Acto: ${horaOficialActo}</div>` : ""}
         ${timelineHTML(rango)}
         <div class="turno-cliente">${ev.summary}</div>
+        ${ev.modalidad ? `<div class="turno-tipo" style="background:${ev.modalidad==='online'?'#DEEAF6':'#E4F2E6'};color:${ev.modalidad==='online'?'#2A5A8C':'#2A7A3A'};">${ev.modalidad==='online'?'💻 Online':'🏢 Presencial'}</div>` : ""}
         ${datos.tipoAsignacion ? `<div class="turno-tipo">${datos.tipoAsignacion}</div>` : ""}
         ${lugarSalaHTML(datos.lugar, datos.sala)}
         ${datos.descansoMinutos ? `<div class="turno-descanso">☕ ${datos.descansoMinutos} min descanso</div>` : ""}
