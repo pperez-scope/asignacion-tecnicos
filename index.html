@@ -2900,6 +2900,21 @@ function footerTotalHTML(etiqueta, total, maximo){
 /* Calcula los segmentos de tiempo de un día para la rejilla horaria de la vista semanal:
    parte el bloque base (Oficina Scope u otra asignación con horario) alrededor de los
    eventos online que caen dentro de su franja, ya que esos son compatibles entre sí. */
+/* Extrae TODOS los tramos "HH:MM–HH:MM" de un texto (para horarios partidos con descanso,
+   tipo "09:00–14:00 y 15:00–18:00"), a diferencia de parseRangoMinutos que solo lee uno. */
+function parseRangosMultiples(str){
+  if(!str) return [];
+  const regex = /(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})/g;
+  const rangos = [];
+  let m;
+  while((m = regex.exec(str))){
+    let inicio = (+m[1])*60 + (+m[2]), fin = (+m[3])*60 + (+m[4]);
+    if(fin <= inicio) fin += 24*60;
+    rangos.push({ inicio, fin });
+  }
+  return rangos;
+}
+
 function calcularSegmentosDia(tecnicoId, fechaIso){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
@@ -2917,10 +2932,11 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     return segmentos;
   }
 
-  // Sin evento presencial: calculamos el bloque base (ausencia con horario, u Oficina Scope por defecto)
-  let baseRango = null, baseLabel = "", baseColor = "";
+  // Sin evento presencial: calculamos el/los bloque(s) base (ausencia con horario, u Oficina Scope
+  // por defecto) — puede haber más de un tramo si el horario es partido (con descanso a mediodía).
+  let baseRangos = [], baseLabel = "", baseColor = "";
   if(ausencia && (ausencia.tipo==="oficina"||ausencia.tipo==="manual"||ausencia.tipo==="teletrabajo"||ausencia.tipo==="mites") && ausencia.horario){
-    baseRango = parseRangoMinutos(ausencia.horario);
+    baseRangos = parseRangosMultiples(ausencia.horario);
     baseLabel = AUSENCIA_LABELS[ausencia.tipo];
     baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : AUSENCIA_COLORS[ausencia.tipo];
   } else if(ausencia){
@@ -2928,7 +2944,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] });
     return segmentos;
   } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
-    baseRango = parseRangoMinutos(horarioOficinaDefecto(nombreTecnico));
+    baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
     baseLabel = "Oficina Scope";
     baseColor = AUSENCIA_COLORS.oficina;
   }
@@ -2938,23 +2954,28 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     .filter(x=>x.rango)
     .sort((a,b)=> a.rango.inicio - b.rango.inicio);
 
-  if(baseRango){
-    let cursor = baseRango.inicio;
-    eventosOnline.forEach(({ev,rango})=>{
-      const inicioEv = Math.max(rango.inicio, baseRango.inicio);
-      const finEv = Math.min(rango.fin, baseRango.fin);
-      if(inicioEv >= finEv) return; // no se solapa con la base
-      if(inicioEv > cursor) segmentos.push({ inicio:cursor, fin:inicioEv, tipo:"base", label:baseLabel, color:baseColor });
-      segmentos.push({ inicio:inicioEv, fin:finEv, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
-      cursor = Math.max(cursor, finEv);
+  if(baseRangos.length){
+    const eventosConsumidos = new Set();
+    baseRangos.forEach(baseRango=>{
+      let cursor = baseRango.inicio;
+      eventosOnline.forEach(({id,ev,rango})=>{
+        const inicioEv = Math.max(rango.inicio, baseRango.inicio);
+        const finEv = Math.min(rango.fin, baseRango.fin);
+        if(inicioEv >= finEv) return; // este tramo online no se solapa con este tramo base
+        if(inicioEv > cursor) segmentos.push({ inicio:cursor, fin:inicioEv, tipo:"base", label:baseLabel, color:baseColor });
+        segmentos.push({ inicio:inicioEv, fin:finEv, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
+        cursor = Math.max(cursor, finEv);
+        eventosConsumidos.add(id);
+      });
+      if(cursor < baseRango.fin) segmentos.push({ inicio:cursor, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor });
     });
-    if(cursor < baseRango.fin) segmentos.push({ inicio:cursor, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor });
-    // Eventos online que caen fuera del horario base (antes o después de la jornada de oficina)
-    eventosOnline.forEach(({ev,rango})=>{
-      if(rango.inicio >= baseRango.fin || rango.fin <= baseRango.inicio){
+    // Eventos online que caen fuera de todos los tramos base (antes, después, o en el descanso)
+    eventosOnline.forEach(({id,ev,rango})=>{
+      if(!eventosConsumidos.has(id)){
         segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
       }
     });
+    segmentos.sort((a,b)=> a.inicio-b.inicio);
   } else {
     // Sin base (p.ej. personal externo sin Oficina Scope por defecto): los eventos van tal cual
     eventosOnline.forEach(({ev,rango})=>{
