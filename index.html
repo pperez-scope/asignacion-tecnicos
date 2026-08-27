@@ -227,6 +227,63 @@
     font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
     font-size:17px;color:var(--navy);
   }
+
+  /* Rejilla horaria (vista semanal de técnico, tipo iCal) */
+  .grid-horario-cabecera{
+    display:grid;
+    grid-template-columns:52px repeat(7,1fr);
+    gap:2px;
+    margin-bottom:2px;
+  }
+  .grid-horario-esquina{background:transparent;}
+  .grid-dia-header{
+    background:var(--navy);color:#fff;
+    border-radius:6px 6px 0 0;
+    padding:6px 2px;
+    text-align:center;
+    display:flex;flex-direction:column;align-items:center;gap:1px;
+  }
+  .grid-dia-header[data-editar-dia]{cursor:pointer;}
+  .grid-dia-header.grid-dia-hoy{background:var(--amber);}
+  .grid-dia-header .th-letra{font-size:9px;text-transform:uppercase;letter-spacing:.03em;color:#C7CFD8;}
+  .grid-dia-header.grid-dia-hoy .th-letra{color:#fff;}
+  .grid-dia-header .th-num{font-family:var(--font-display);font-size:15px;font-weight:700;line-height:1.1;}
+  .grid-dia-horas{font-size:9px;color:#B7C0CC;}
+  .grid-dia-header.grid-dia-hoy .grid-dia-horas{color:#fff;}
+  .grid-horario-cuerpo{
+    display:grid;
+    grid-template-columns:52px repeat(7,1fr);
+    gap:2px;
+    position:relative;
+    height:760px;
+    overflow-y:auto;
+    border:1px solid var(--line);
+    border-radius:0 0 8px 8px;
+    background:#fff;
+  }
+  .grid-horas-lateral{position:relative;border-right:1px solid var(--line);}
+  .grid-hora-marca{
+    position:absolute;left:0;right:4px;text-align:right;
+    font-size:9.5px;color:var(--ink-soft);transform:translateY(-50%);
+  }
+  .grid-dia-col{
+    position:relative;
+    border-left:1px solid var(--line);
+    background-image:repeating-linear-gradient(to bottom, var(--line) 0, var(--line) 1px, transparent 1px, transparent calc(100%/10));
+  }
+  .grid-dia-col.grid-dia-hoy{background-color:#FBF0E1;}
+  .grid-bloque{
+    position:absolute;left:2px;right:2px;
+    border-radius:5px;
+    padding:2px 4px;
+    overflow:hidden;
+    color:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.15);
+  }
+  .grid-bloque-base{opacity:.92;}
+  .grid-bloque-evento{outline:2px solid #fff;z-index:2;}
+  .grid-bloque-hora{font-size:8.5px;font-weight:700;line-height:1.15;}
+  .grid-bloque-label{font-size:9px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .week-grid{
     display:grid;
     grid-template-columns:repeat(7,minmax(120px,1fr));
@@ -733,7 +790,11 @@
         </div>
         <div class="field hidden" id="mesAsignacionesField">
           <label>Mes</label>
-          <input type="month" id="mesAsignaciones" />
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button type="button" class="btn btn-ghost" id="btnMesAsignacionesAnterior">‹</button>
+            <span id="mesAsignacionesLabel" style="font-family:var(--font-display);font-weight:700;color:var(--navy);min-width:130px;text-align:center;"></span>
+            <button type="button" class="btn btn-ghost" id="btnMesAsignacionesSiguiente">›</button>
+          </div>
         </div>
       </div>
     </div>
@@ -764,7 +825,11 @@
         </div>
         <div class="field" id="mesTecnicoField">
           <label>Mes</label>
-          <input type="month" id="mesTecnico" />
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button type="button" class="btn btn-ghost" id="btnMesTecnicoAnterior">‹</button>
+            <span id="mesTecnicoLabel" style="font-family:var(--font-display);font-weight:700;color:var(--navy);min-width:130px;text-align:center;"></span>
+            <button type="button" class="btn btn-ghost" id="btnMesTecnicoSiguiente">›</button>
+          </div>
         </div>
       </div>
     </div>
@@ -2075,8 +2140,7 @@ function renderSinCubrir(){
       const ev = STATE.eventos[id];
       if(ev){
         weekState.asignar = startOfWeek(new Date(ev.start));
-        const mesInput = document.getElementById("mesAsignaciones");
-        if(mesInput) mesInput.value = ev.start.slice(0,7);
+        mesAsignacionesActual = new Date(new Date(ev.start).getFullYear(), new Date(ev.start).getMonth(), 1);
       }
       document.querySelector('nav.tabs button[data-tab="asignar"]').click();
     });
@@ -2084,11 +2148,11 @@ function renderSinCubrir(){
 }
 
 let asignacionesModo = "semana";
+let mesAsignacionesActual = null;
 
 function renderAsignar(){
   const switchEl = document.getElementById("asignacionesModoSwitch");
   const mesField = document.getElementById("mesAsignacionesField");
-  const mesInput = document.getElementById("mesAsignaciones");
 
   if(!switchEl.dataset.wired){
     switchEl.dataset.wired = "1";
@@ -2100,14 +2164,35 @@ function renderAsignar(){
       });
     });
   }
-  if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
-  mesInput.onchange = render;
+  if(!mesAsignacionesActual) mesAsignacionesActual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const mesValue = `${mesAsignacionesActual.getFullYear()}-${String(mesAsignacionesActual.getMonth()+1).padStart(2,"0")}`;
+  const mesLabel = document.getElementById("mesAsignacionesLabel");
+  if(mesLabel){
+    const txt = mesAsignacionesActual.toLocaleDateString("es-ES", { month:"long", year:"numeric" });
+    mesLabel.textContent = txt.charAt(0).toUpperCase()+txt.slice(1);
+  }
+  const btnMesAnt = document.getElementById("btnMesAsignacionesAnterior");
+  const btnMesSig = document.getElementById("btnMesAsignacionesSiguiente");
+  if(btnMesAnt && !btnMesAnt.dataset.wired){
+    btnMesAnt.dataset.wired = "1";
+    btnMesAnt.addEventListener("click", ()=>{
+      mesAsignacionesActual = new Date(mesAsignacionesActual.getFullYear(), mesAsignacionesActual.getMonth()-1, 1);
+      render();
+    });
+  }
+  if(btnMesSig && !btnMesSig.dataset.wired){
+    btnMesSig.dataset.wired = "1";
+    btnMesSig.addEventListener("click", ()=>{
+      mesAsignacionesActual = new Date(mesAsignacionesActual.getFullYear(), mesAsignacionesActual.getMonth()+1, 1);
+      render();
+    });
+  }
   mesField.classList.toggle("hidden", asignacionesModo!=="mes");
 
   if(asignacionesModo==="semana"){
     renderWeekGrid("asignarWeek", "asignar", { onlySinCubrir:false, clickable:true });
   } else {
-    renderAsignarMes(mesInput.value);
+    renderAsignarMes(mesValue);
   }
 
   const detalleCard = document.getElementById("asignarDetalleCard");
@@ -2626,10 +2711,10 @@ function eventosDelDia(fechaIso){
 }
 
 let tecnicoModo = "semana";
+let mesTecnicoActual = null;
 
 function renderVistaTecnico(){
   const selTec = document.getElementById("selectTecnico");
-  const mesInput = document.getElementById("mesTecnico");
   const mesField = document.getElementById("mesTecnicoField");
   const switchEl = document.getElementById("tecnicoModoSwitch");
 
@@ -2641,8 +2726,29 @@ function renderVistaTecnico(){
     selTec.dataset.filledCount = String(totalTecnicos);
     selTec.onchange = ()=>{ cerrarEditorDiaTecnico(); renderVistaTecnico(); };
   }
-  if(!mesInput.value) mesInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
-  mesInput.onchange = renderVistaTecnico;
+  if(!mesTecnicoActual) mesTecnicoActual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const mesValue = `${mesTecnicoActual.getFullYear()}-${String(mesTecnicoActual.getMonth()+1).padStart(2,"0")}`;
+  const mesLabel = document.getElementById("mesTecnicoLabel");
+  if(mesLabel){
+    const txt = mesTecnicoActual.toLocaleDateString("es-ES", { month:"long", year:"numeric" });
+    mesLabel.textContent = txt.charAt(0).toUpperCase()+txt.slice(1);
+  }
+  const btnMesAnt = document.getElementById("btnMesTecnicoAnterior");
+  const btnMesSig = document.getElementById("btnMesTecnicoSiguiente");
+  if(btnMesAnt && !btnMesAnt.dataset.wired){
+    btnMesAnt.dataset.wired = "1";
+    btnMesAnt.addEventListener("click", ()=>{
+      mesTecnicoActual = new Date(mesTecnicoActual.getFullYear(), mesTecnicoActual.getMonth()-1, 1);
+      renderVistaTecnico();
+    });
+  }
+  if(btnMesSig && !btnMesSig.dataset.wired){
+    btnMesSig.dataset.wired = "1";
+    btnMesSig.addEventListener("click", ()=>{
+      mesTecnicoActual = new Date(mesTecnicoActual.getFullYear(), mesTecnicoActual.getMonth()+1, 1);
+      renderVistaTecnico();
+    });
+  }
 
   if(!switchEl.dataset.wired){
     switchEl.dataset.wired = "1";
@@ -2661,8 +2767,8 @@ function renderVistaTecnico(){
   if(!tecnicoId){ grid.innerHTML = `<p class="muted">Carga la lista de técnicos desde Admin.</p>`; return; }
 
   if(tecnicoModo === "semana") renderTecnicoSemana(tecnicoId, grid);
-  else if(tecnicoModo === "lista") renderTecnicoLista(tecnicoId, mesInput.value, grid);
-  else renderTecnicoMes(tecnicoId, mesInput.value, grid);
+  else if(tecnicoModo === "lista") renderTecnicoLista(tecnicoId, mesValue, grid);
+  else renderTecnicoMes(tecnicoId, mesValue, grid);
 }
 
 /* Parsea "HH:MM–HH:MM" a minutos desde medianoche, contemplando turnos que cruzan la medianoche */
@@ -2848,6 +2954,93 @@ function footerTotalHTML(etiqueta, total, maximo){
   return `<div class="periodo-total-footer ${excede?'excede':''}">${etiqueta}: <strong>${totalTxt}</strong> <span class="periodo-total-max">/ ${maxTxt} jornada</span>${excede?`<span class="periodo-total-aviso">Supera la jornada</span>`:""}</div>`;
 }
 
+/* Calcula los segmentos de tiempo de un día para la rejilla horaria de la vista semanal:
+   parte el bloque base (Oficina Scope u otra asignación con horario) alrededor de los
+   eventos online que caen dentro de su franja, ya que esos son compatibles entre sí. */
+function calcularSegmentosDia(tecnicoId, fechaIso){
+  const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
+  const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
+  const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
+  const hayPresencial = eventosDia.some(([,ev])=> ev.modalidad!=="online");
+  const segmentos = [];
+
+  // Evento(s) presencial(es): ocupan al técnico físicamente, van tal cual y no hay base debajo.
+  if(hayPresencial){
+    eventosDia.forEach(([id,ev])=>{
+      const datos = STATE.asignaciones[id][tecnicoId];
+      const rango = parseRangoMinutos(datos.horario);
+      if(rango) segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, datos, ev });
+    });
+    return segmentos;
+  }
+
+  // Sin evento presencial: calculamos el bloque base (ausencia con horario, u Oficina Scope por defecto)
+  let baseRango = null, baseLabel = "", baseColor = "";
+  if(ausencia && (ausencia.tipo==="oficina"||ausencia.tipo==="manual"||ausencia.tipo==="teletrabajo"||ausencia.tipo==="mites") && ausencia.horario){
+    baseRango = parseRangoMinutos(ausencia.horario);
+    baseLabel = AUSENCIA_LABELS[ausencia.tipo];
+    baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : AUSENCIA_COLORS[ausencia.tipo];
+  } else if(ausencia){
+    // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
+    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] });
+    return segmentos;
+  } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
+    baseRango = parseRangoMinutos(horarioOficinaDefecto(nombreTecnico));
+    baseLabel = "Oficina Scope";
+    baseColor = AUSENCIA_COLORS.oficina;
+  }
+
+  const eventosOnline = eventosDia
+    .map(([id,ev])=>({ id, ev, rango: parseRangoMinutos(STATE.asignaciones[id][tecnicoId].horario) }))
+    .filter(x=>x.rango)
+    .sort((a,b)=> a.rango.inicio - b.rango.inicio);
+
+  if(baseRango){
+    let cursor = baseRango.inicio;
+    eventosOnline.forEach(({ev,rango})=>{
+      const inicioEv = Math.max(rango.inicio, baseRango.inicio);
+      const finEv = Math.min(rango.fin, baseRango.fin);
+      if(inicioEv >= finEv) return; // no se solapa con la base
+      if(inicioEv > cursor) segmentos.push({ inicio:cursor, fin:inicioEv, tipo:"base", label:baseLabel, color:baseColor });
+      segmentos.push({ inicio:inicioEv, fin:finEv, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
+      cursor = Math.max(cursor, finEv);
+    });
+    if(cursor < baseRango.fin) segmentos.push({ inicio:cursor, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor });
+    // Eventos online que caen fuera del horario base (antes o después de la jornada de oficina)
+    eventosOnline.forEach(({ev,rango})=>{
+      if(rango.inicio >= baseRango.fin || rango.fin <= baseRango.inicio){
+        segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
+      }
+    });
+  } else {
+    // Sin base (p.ej. personal externo sin Oficina Scope por defecto): los eventos van tal cual
+    eventosOnline.forEach(({ev,rango})=>{
+      segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", ev });
+    });
+  }
+  return segmentos;
+}
+
+/* Construye una columna de día para la rejilla horaria, con los segmentos posicionados
+   según su hora real (mismo rango 06:00–02:00 que ya usa la mini línea de tiempo). */
+function columnaGridHorario(tecnicoId, fechaIso, esHoy){
+  const totalMin = TIMELINE_FIN - TIMELINE_INICIO;
+  const segmentos = calcularSegmentosDia(tecnicoId, fechaIso);
+  const bloques = segmentos.map(seg=>{
+    const inicioClamp = Math.max(seg.inicio, TIMELINE_INICIO);
+    const finClamp = Math.min(seg.fin, TIMELINE_FIN);
+    const top = (inicioClamp - TIMELINE_INICIO) / totalMin * 100;
+    const height = Math.max(1.2, (finClamp - inicioClamp) / totalMin * 100);
+    const horaTxt = seg.tipo==="todo-el-dia" ? "" : `${minutosAHora(seg.inicio%1440)}–${minutosAHora(seg.fin%1440)}`;
+    const icono = seg.modalidad==="online" ? "💻 " : "";
+    return `<div class="grid-bloque ${seg.tipo==='evento'?'grid-bloque-evento':'grid-bloque-base'}" style="top:${top}%;height:${height}%;background:${seg.color};" title="${seg.label} ${horaTxt}">
+      <div class="grid-bloque-hora">${icono}${horaTxt}</div>
+      <div class="grid-bloque-label">${seg.label}</div>
+    </div>`;
+  }).join("");
+  return `<div class="grid-dia-col ${esHoy?'grid-dia-hoy':''}">${bloques}</div>`;
+}
+
 function renderTecnicoSemana(tecnicoId, grid){
   if(!weekState.tecnico) weekState.tecnico = startOfWeek(new Date());
   const weekStart = weekState.tecnico;
@@ -2874,22 +3067,42 @@ function renderTecnicoSemana(tecnicoId, grid){
     return;
   }
 
+  const hoyIso = isoDate(new Date());
   let totalSemana = 0;
+  dias.forEach(d=> totalSemana += horasDiaTecnico(tecnicoId, isoDate(d)));
+  const maxSemana = horasMaximasTecnico(nombreTecnico, weekStart, weekEnd);
+
+  // Marcas de hora en el lateral, cada 2 horas, dentro del rango 06:00–02:00
+  const marcasHora = [];
+  for(let m=TIMELINE_INICIO; m<=TIMELINE_FIN; m+=120) marcasHora.push(m);
+  const totalMin = TIMELINE_FIN - TIMELINE_INICIO;
+  const horasLateral = marcasHora.map(m=>{
+    const top = (m-TIMELINE_INICIO)/totalMin*100;
+    return `<div class="grid-hora-marca" style="top:${top}%;">${minutosAHora(m%1440)}</div>`;
+  }).join("");
+
   let html = `<div class="week-nav">
       <button class="btn btn-ghost" data-tec-week-nav="-1">‹ Semana anterior</button>
       <div class="week-range">${fmtWeekRange(weekStart)}</div>
       <button class="btn btn-ghost" data-tec-week-nav="1">Semana siguiente ›</button>
-    </div><div class="month-grid" style="grid-template-columns:repeat(7,1fr);">`;
-  ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
-  dias.forEach(d=>{
-    const fechaIso = isoDate(d);
-    const { cls, contenido } = celdaDiaTecnico(tecnicoId, fechaIso);
-    const horasDia = horasDiaTecnico(tecnicoId, fechaIso);
-    totalSemana += horasDia;
-    html += `<div class="${cls} ${isAdmin?'day-cell-editable':''}" style="min-height:110px;" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num">${d.getDate()}</div>${contenido}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
-  });
-  const maxSemana = horasMaximasTecnico(nombreTecnico, weekStart, weekEnd);
-  html += `</div>` + footerTotalHTML("Total semana", totalSemana, maxSemana);
+    </div>
+    <div class="grid-horario-cabecera">
+      <div class="grid-horario-esquina"></div>
+      ${dias.map(d=>{
+        const fechaIso = isoDate(d);
+        const esHoy = fechaIso===hoyIso;
+        return `<div class="grid-dia-header ${esHoy?'grid-dia-hoy':''}" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}>
+          <span class="th-letra">${["L","M","X","J","V","S","D"][(d.getDay()+6)%7]}</span>
+          <span class="th-num">${d.getDate()}</span>
+          ${horasDiaTecnico(tecnicoId,fechaIso)>0?`<span class="grid-dia-horas">${fmtHoras(horasDiaTecnico(tecnicoId,fechaIso))}</span>`:""}
+        </div>`;
+      }).join("")}
+    </div>
+    <div class="grid-horario-cuerpo">
+      <div class="grid-horas-lateral">${horasLateral}</div>
+      ${dias.map(d=> columnaGridHorario(tecnicoId, isoDate(d), isoDate(d)===hoyIso)).join("")}
+    </div>
+    ` + footerTotalHTML("Total semana", totalSemana, maxSemana);
   grid.innerHTML = html;
 
   grid.querySelectorAll("[data-tec-week-nav]").forEach(btn=>{
@@ -2900,9 +3113,11 @@ function renderTecnicoSemana(tecnicoId, grid){
       renderVistaTecnico();
     });
   });
-  grid.querySelectorAll("[data-editar-dia]").forEach(cell=>{
-    cell.addEventListener("click", ()=> abrirEditorDiaTecnico(tecnicoId, cell.dataset.editarDia));
-  });
+  if(isAdmin){
+    grid.querySelectorAll(".grid-dia-header[data-editar-dia]").forEach(cell=>{
+      cell.addEventListener("click", ()=> abrirEditorDiaTecnico(tecnicoId, cell.dataset.editarDia));
+    });
+  }
 }
 
 function renderTecnicoMes(tecnicoId, mesValue, grid){
@@ -3109,8 +3324,7 @@ function irAEditarDesdeCuadrante(tid, fechaIso){
     const [id, ev] = eventosDia[0];
     eventoSeleccionado = id; editandoTecnicoId = null;
     weekState.asignar = startOfWeek(new Date(ev.start));
-    const mesInputAsig = document.getElementById("mesAsignaciones");
-    if(mesInputAsig) mesInputAsig.value = ev.start.slice(0,7);
+    mesAsignacionesActual = new Date(new Date(ev.start).getFullYear(), new Date(ev.start).getMonth(), 1);
     document.querySelector('nav.tabs button[data-tab="asignar"]').click();
   } else {
     document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
@@ -3159,8 +3373,7 @@ function renderEditorDiaTecnico(){
         const ev = STATE.eventos[id];
         if(ev){
           weekState.asignar = startOfWeek(new Date(ev.start));
-          const mesInputAsig = document.getElementById("mesAsignaciones");
-          if(mesInputAsig) mesInputAsig.value = ev.start.slice(0,7);
+          mesAsignacionesActual = new Date(new Date(ev.start).getFullYear(), new Date(ev.start).getMonth(), 1);
         }
         cerrarEditorDiaTecnico();
         document.querySelector('nav.tabs button[data-tab="asignar"]').click();
