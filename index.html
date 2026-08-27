@@ -1155,6 +1155,7 @@ let weekState = { sincubrir: startOfWeek(new Date()), asignar: startOfWeek(new D
 let eventoSeleccionado = null;
 let editandoTecnicoId = null;
 let diaTecnicoEditando = null; // {tecnicoId, fecha} cuando el editor de día está abierto en Vista técnico
+let ultimoTecnicoAusenciasForm = null; // recuerda el técnico elegido en el formulario de Otras asignaciones entre envíos
 
 /* Genera el HTML de una semana tipo iCal con navegación. onlySinCubrir filtra los ya cubiertos. */
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
@@ -2604,7 +2605,7 @@ function celdaDiaTecnico(tecnicoId, fechaIso, extraClass=""){
   const lugarSalaHTML = (lugar, sala) => (lugar||sala) ? `<div class="turno-lugar">📍 ${[lugar,sala].filter(Boolean).join(" · ")}</div>` : "";
   if(ausencia){
     cls += ` ausencia-${ausencia.tipo}`;
-    if(ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo"){
+    if(ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo" || ausencia.tipo==="mites"){
       contenido = `<div class="turno-block" style="border-left-color:${AUSENCIA_COLORS[ausencia.tipo]};">
         <div class="turno-cliente">${AUSENCIA_LABELS[ausencia.tipo]}</div>
         ${ausencia.tipoAsignacion ? `<div class="turno-tipo">${ausencia.tipoAsignacion}</div>` : ""}
@@ -2678,7 +2679,7 @@ function horasDesdeTextoLibre(str){
 function horasDiaTecnico(tecnicoId, fechaIso){
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   if(ausencia){
-    if((ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo") && ausencia.horario){
+    if((ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo" || ausencia.tipo==="mites") && ausencia.horario){
       let horas = horasDesdeTextoLibre(ausencia.horario);
       if(ausencia.descansoMinutos) horas -= ausencia.descansoMinutos/60;
       return Math.max(0, horas);
@@ -3101,13 +3102,13 @@ function renderEditorDiaTecnico(){
   };
   const actualizarCamposTipo = ()=>{
     const tipo = tipoSelect.value;
-    const necesitaHorario = tipo==="oficina" || tipo==="manual" || tipo==="teletrabajo";
-    const necesitaLugar = tipo==="oficina" || tipo==="manual";
+    const necesitaHorario = tipo==="oficina" || tipo==="manual" || tipo==="teletrabajo" || tipo==="mites";
+    const necesitaLugar = tipo==="oficina" || tipo==="manual" || tipo==="mites";
     horarioRow.classList.toggle("hidden", !necesitaHorario);
     lugarRow.classList.toggle("hidden", !necesitaLugar);
     descansoRow.classList.toggle("hidden", !necesitaHorario);
     tipoAsigRow.classList.toggle("hidden", !necesitaLugar);
-    notaRow.classList.toggle("hidden", tipo!=="manual");
+    notaRow.classList.toggle("hidden", tipo!=="manual" && tipo!=="mites");
     if(tipo==="oficina" && !horarioInput.value) horarioInput.value = horarioOficinaDefecto(nombreTecnico);
     if(tipo==="oficina" && !document.getElementById("editorDiaLugar").value) document.getElementById("editorDiaLugar").value = "Scope";
     if(necesitaHorario) evaluarDescansoAuto();
@@ -3119,12 +3120,12 @@ function renderEditorDiaTecnico(){
 
   document.getElementById("btnGuardarEditorDia").addEventListener("click", ()=>{
     const tipo = tipoSelect.value;
-    const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo";
-    const necesitaLugar = tipo==="oficina"||tipo==="manual";
+    const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo"||tipo==="mites";
+    const necesitaLugar = tipo==="oficina"||tipo==="manual"||tipo==="mites";
     const horario = necesitaHorario ? horarioInput.value : "";
     const lugar = necesitaLugar ? document.getElementById("editorDiaLugar").value : "";
     const sala = necesitaLugar ? document.getElementById("editorDiaSala").value : "";
-    const nota = tipo==="manual" ? document.getElementById("editorDiaNota").value : "";
+    const nota = (tipo==="manual"||tipo==="mites") ? document.getElementById("editorDiaNota").value : "";
     const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
     const tipoAsignacion = necesitaLugar ? document.getElementById("editorDiaTipoAsignacion").value : "";
     if(necesitaLugar && !tipoAsignacion) return toast("Elige el tipo de asignación");
@@ -3322,7 +3323,7 @@ function renderAusencias(){
       <div class="row">
         <div class="field">
           <label>Técnico</label>
-          <select id="ausTecnico">${Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("")}</select>
+          <select id="ausTecnico">${Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}" ${id===ultimoTecnicoAusenciasForm?"selected":""}>${t.nombre}</option>`).join("")}</select>
         </div>
         <div class="field">
           <label>Categoría</label>
@@ -3388,6 +3389,7 @@ function renderAusencias(){
       <button class="btn btn-amber" id="btnAddAusencia">Guardar</button>
     `;
     const tipoSelect = document.getElementById("ausTipo");
+    document.getElementById("ausTecnico").addEventListener("change", (e)=>{ ultimoTecnicoAusenciasForm = e.target.value; });
     const horarioRow = document.getElementById("ausHorarioRow");
     const notaRow = document.getElementById("ausNotaRow");
     const horarioInput = document.getElementById("ausHorario");
@@ -3412,13 +3414,13 @@ function renderAusencias(){
     };
     const actualizarCamposTipo = ()=>{
       const tipo = tipoSelect.value;
-      const necesitaHorario = tipo==="oficina" || tipo==="manual" || tipo==="teletrabajo";
-      const necesitaLugar = tipo==="oficina" || tipo==="manual";
+      const necesitaHorario = tipo==="oficina" || tipo==="manual" || tipo==="teletrabajo" || tipo==="mites";
+      const necesitaLugar = tipo==="oficina" || tipo==="manual" || tipo==="mites";
       horarioRow.classList.toggle("hidden", !necesitaHorario);
       descansoRow.classList.toggle("hidden", !necesitaHorario);
       tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
       lugarRow.classList.toggle("hidden", !necesitaLugar);
-      notaRow.classList.toggle("hidden", tipo!=="manual");
+      notaRow.classList.toggle("hidden", tipo!=="manual" && tipo!=="mites");
       if(tipo==="oficina" && !horarioInput.value) horarioInput.value = AUSENCIA_HORARIO_DEFECTO.oficina;
       if(tipo==="oficina" && !lugarInput.value) lugarInput.value = "Scope";
       if(necesitaHorario) evaluarDescansoAuto();
@@ -3433,16 +3435,17 @@ function renderAusencias(){
       const tipo = tipoSelect.value;
       const desde = document.getElementById("ausDesde").value;
       const hasta = document.getElementById("ausHasta").value;
-      const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo";
-      const necesitaLugar = tipo==="oficina"||tipo==="manual";
+      const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo"||tipo==="mites";
+      const necesitaLugar = tipo==="oficina"||tipo==="manual"||tipo==="mites";
       const horario = necesitaHorario ? horarioInput.value : "";
-      const nota = tipo==="manual" ? document.getElementById("ausNota").value : "";
+      const nota = (tipo==="manual"||tipo==="mites") ? document.getElementById("ausNota").value : "";
       const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
       const tipoAsignacion = necesitaHorario ? tipoAsignacionSelect.value : "";
       const lugar = necesitaLugar ? lugarInput.value : "";
       const sala = necesitaLugar ? salaInput.value : "";
       if(!tid || !desde) return toast("Falta técnico o fecha");
       if(necesitaHorario && !tipoAsignacion) return toast("Elige el tipo de asignación");
+      ultimoTecnicoAusenciasForm = tid;
       addAusencia(tid, desde, hasta, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala);
     });
   } else {
@@ -3462,12 +3465,50 @@ function renderAusencias(){
         ${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}
         ${datos.nota?` · ${datos.nota}`:""}
       </div>
-      ${isAdmin?`<button class="btn btn-ghost" data-del-ausencia="${fecha}">Quitar</button>`:""}
+      ${isAdmin?`<button class="btn btn-ghost" data-editar-ausencia="${fecha}" title="Editar">✎</button><button class="btn btn-ghost" data-del-ausencia="${fecha}">Quitar</button>`:""}
     </div>
   `).join("") : `<p class="muted">Sin entradas registradas.</p>`;
 
   document.getElementById("ausenciasList").querySelectorAll("[data-del-ausencia]").forEach(btn=>{
     btn.addEventListener("click", ()=> removeAusencia(tid, btn.dataset.delAusencia));
+  });
+  document.getElementById("ausenciasList").querySelectorAll("[data-editar-ausencia]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const fecha = btn.dataset.editarAusencia;
+      const datos = STATE.ausencias[tid]?.[fecha];
+      if(!datos || !isAdmin) return;
+      ultimoTecnicoAusenciasForm = tid;
+
+      const elTecnico = document.getElementById("ausTecnico");
+      const elTipo = document.getElementById("ausTipo");
+      const elDesde = document.getElementById("ausDesde");
+      const elHasta = document.getElementById("ausHasta");
+      if(!elTecnico || !elTipo || !elDesde) return; // formulario no visible (no admin)
+
+      elTecnico.value = tid;
+      elTipo.value = datos.tipo;
+      elDesde.value = fecha;
+      elHasta.value = "";
+      elTipo.dispatchEvent(new Event("change"));
+
+      const elHorario = document.getElementById("ausHorario");
+      const elLugar = document.getElementById("ausLugar");
+      const elSala = document.getElementById("ausSala");
+      const elTipoAsignacion = document.getElementById("ausTipoAsignacion");
+      const elChkDescanso = document.getElementById("ausDescansoActivo");
+      const elDescansoMinutos = document.getElementById("ausDescansoMinutos");
+      const elNota = document.getElementById("ausNota");
+      if(elHorario) elHorario.value = datos.horario || "";
+      if(elLugar) elLugar.value = datos.lugar || "";
+      if(elSala) elSala.value = datos.sala || "";
+      if(elTipoAsignacion) elTipoAsignacion.value = datos.tipoAsignacion || "";
+      if(elChkDescanso){ elChkDescanso.checked = !!datos.descansoMinutos; elChkDescanso.dispatchEvent(new Event("change")); }
+      if(elDescansoMinutos && datos.descansoMinutos) elDescansoMinutos.value = datos.descansoMinutos;
+      if(elNota) elNota.value = datos.nota || "";
+
+      toast(`Editando la entrada del ${fecha}. Cambia lo que necesites y pulsa Guardar.`);
+      document.getElementById("ausenciasForm").scrollIntoView({ behavior:"smooth", block:"start" });
+    });
   });
 }
 
