@@ -1687,7 +1687,8 @@ document.getElementById("btnArreglarLibranzas").addEventListener("click", async 
   // sacamos la fecha del día trabajado que compensa. Si ya tiene fecha (formato nuevo) o no se
   // encuentra ningún evento vinculado, se deja intacta.
   const updates = {};
-  let corregidas = 0, sinEncontrar = 0;
+  let corregidas = 0;
+  const sinEncontrar = [];
   Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
     Object.entries(porFecha||{}).forEach(([fechaLibranza, datos])=>{
       if(datos.tipo!=="libranza") return;
@@ -1704,16 +1705,17 @@ document.getElementById("btnArreglarLibranzas").addEventListener("click", async 
         updates[`ausencias/${tid}/${fechaLibranza}/nota`] = notaLibranzaCompensatoria(eventIdEncontrado);
         corregidas++;
       } else {
-        sinEncontrar++;
+        sinEncontrar.push(`${STATE.tecnicos[tid]?.nombre || tid} (${fechaLibranza})`);
       }
     });
   });
-  if(corregidas===0 && sinEncontrar===0){
+  if(corregidas===0 && sinEncontrar.length===0){
     statusEl.textContent = "No había ninguna libranza compensatoria con la nota antigua. Todo en orden.";
     return;
   }
   if(corregidas>0) await update(ref(db), updates);
-  statusEl.textContent = `${corregidas} nota${corregidas>1?"s":""} actualizada${corregidas>1?"s":""} con su fecha.` + (sinEncontrar>0 ? ` ${sinEncontrar} no se pudo${sinEncontrar>1?"ieron":""} vincular a ningún evento (puede que el evento se haya borrado desde entonces) y se ha${sinEncontrar>1?"n":""} dejado igual.` : "");
+  statusEl.textContent = `${corregidas} nota${corregidas>1?"s":""} actualizada${corregidas>1?"s":""} con su fecha.`
+    + (sinEncontrar.length>0 ? ` ${sinEncontrar.length} no se pudo${sinEncontrar.length>1?"ieron":""} vincular a ningún evento: ${sinEncontrar.join(" · ")}. Puede que la fecha trabajada se asignara como Teletrabajo/Manual/Mites en vez de un evento de calendario — revísalas en el aviso de "libranza pendiente" de esta pestaña, o edita la nota a mano con el botón ✎.` : "");
   toast(`${corregidas} nota${corregidas>1?"s":""} actualizada${corregidas>1?"s":""}`);
 });
 
