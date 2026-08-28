@@ -2048,6 +2048,9 @@ function esFindeOFestivo(fechaIso){
   return !esDiaLaborable(parseIsoLocal(fechaIso.slice(0,10)));
 }
 /* Lista de asignaciones en fin de semana/festivo a las que aún no se les ha puesto libranza compensatoria */
+/* Lista de asignaciones en fin de semana/festivo a las que aún no se les ha puesto libranza
+   compensatoria — tanto eventos de calendario como asignaciones de Teletrabajo/Manual/Mites
+   hechas a mano en Otras asignaciones. */
 function obtenerLibranzasPendientes(){
   const pendientes = [];
   Object.entries(STATE.asignaciones).forEach(([eventId, porTecnico])=>{
@@ -2055,11 +2058,19 @@ function obtenerLibranzasPendientes(){
     if(!evento || !esFindeOFestivo(evento.start)) return;
     Object.entries(porTecnico).forEach(([tid, datos])=>{
       if(!datos.libranzaCompensatoria){
-        pendientes.push({ eventId, tid, evento, datos });
+        pendientes.push({ origen:"evento", eventId, tid, fechaTrabajada:evento.start, etiqueta:evento.summary });
       }
     });
   });
-  pendientes.sort((a,b)=> new Date(a.evento.start) - new Date(b.evento.start));
+  Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
+    Object.entries(porFecha||{}).forEach(([fecha, datos])=>{
+      if(!["teletrabajo","manual","mites"].includes(datos.tipo)) return;
+      if(!esFindeOFestivo(fecha)) return;
+      if(datos.libranzaCompensatoria) return;
+      pendientes.push({ origen:"ausencia", tid, fechaTrabajada:fecha, etiqueta:AUSENCIA_LABELS[datos.tipo] });
+    });
+  });
+  pendientes.sort((a,b)=> new Date(a.fechaTrabajada) - new Date(b.fechaTrabajada));
   return pendientes;
 }
 async function resolverLibranzaPendiente(eventId, tid, fecha){
@@ -2071,6 +2082,19 @@ async function resolverLibranzaPendiente(eventId, tid, fecha){
 }
 async function marcarLibranzaNoNecesaria(eventId, tid){
   await update(ref(db), { [`asignaciones/${eventId}/${tid}/libranzaCompensatoria`]: "no_aplica" });
+  toast("Marcado como no necesario");
+}
+/* Igual que resolverLibranzaPendiente, pero para el caso de una asignación de Teletrabajo/Manual/
+   Mites en fin de semana/festivo (no hay evento de calendario al que vincularlo). */
+async function resolverLibranzaPendienteAusencia(tid, fechaTrabajada, etiqueta, fechaLibranza){
+  await update(ref(db), {
+    [`ausencias/${tid}/${fechaTrabajada}/libranzaCompensatoria`]: fechaLibranza,
+    [`ausencias/${tid}/${fechaLibranza}`]: { tipo:"libranza", nota:`Compensa trabajo en fin de semana/festivo (${fmtFecha(fechaTrabajada)} — ${etiqueta})` }
+  });
+  toast("Libranza compensatoria asignada");
+}
+async function marcarLibranzaNoNecesariaAusencia(tid, fechaTrabajada){
+  await update(ref(db), { [`ausencias/${tid}/${fechaTrabajada}/libranzaCompensatoria`]: "no_aplica" });
   toast("Marcado como no necesario");
 }
 
@@ -3414,7 +3438,7 @@ function renderEditorDiaTecnico(){
     lugarRow.classList.toggle("hidden", !necesitaLugar);
     descansoRow.classList.toggle("hidden", !necesitaHorario);
     tipoAsigRow.classList.toggle("hidden", !necesitaLugar);
-    notaRow.classList.toggle("hidden", tipo!=="manual" && tipo!=="mites");
+    notaRow.classList.toggle("hidden", false); // la nota está disponible para cualquier categoría (útil para anotar a qué día compensa una libranza, por ejemplo)
     if((tipo==="oficina"||tipo==="teletrabajo") && !horarioInput.value) horarioInput.value = horarioOficinaDefecto(nombreTecnico);
     if(tipo==="oficina" && !document.getElementById("editorDiaLugar").value) document.getElementById("editorDiaLugar").value = "Scope";
     if(necesitaHorario) evaluarDescansoAuto();
@@ -3439,7 +3463,7 @@ function renderEditorDiaTecnico(){
     const lugar = necesitaLugar ? document.getElementById("editorDiaLugar").value : "";
     const sala = necesitaLugar ? document.getElementById("editorDiaSala").value : "";
     const calendarioAsociado = necesitaLugar ? (document.getElementById("editorDiaCalendarioAsociado")?.value || "") : "";
-    const nota = (tipo==="manual"||tipo==="mites") ? document.getElementById("editorDiaNota").value : "";
+    const nota = document.getElementById("editorDiaNota").value;
     const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
     const tipoAsignacion = necesitaLugar ? document.getElementById("editorDiaTipoAsignacion").value : "";
     if(necesitaLugar && !tipoAsignacion) return toast("Elige el tipo de asignación");
@@ -3611,30 +3635,32 @@ function renderAusencias(){
     pendientesCard.classList.add("hidden");
   } else {
     pendientesCard.classList.remove("hidden");
-    pendientesList.innerHTML = pendientes.map(({eventId,tid,evento})=>{
-      const nombre = STATE.tecnicos[tid]?.nombre || tid;
+    pendientesList.innerHTML = pendientes.map((p,idx)=>{
+      const nombre = STATE.tecnicos[p.tid]?.nombre || p.tid;
       return `<div class="event-row">
-        <div class="event-fecha">${fmtFecha(evento.start)}</div>
+        <div class="event-fecha">${fmtFecha(p.fechaTrabajada)}</div>
         <div style="flex:1;">
-          <strong>${nombre}</strong> · ${evento.summary}
+          <strong>${nombre}</strong> · ${p.etiqueta}
         </div>
-        <input type="date" class="input-fecha-libranza" data-event="${eventId}" data-tid="${tid}" style="width:160px;">
-        <button class="btn btn-amber" data-resolver="${eventId}|${tid}">Asignar</button>
-        <button class="btn btn-ghost" data-no-aplica="${eventId}|${tid}">No aplica</button>
+        <input type="date" class="input-fecha-libranza" data-idx="${idx}" style="width:160px;">
+        <button class="btn btn-amber" data-resolver="${idx}">Asignar</button>
+        <button class="btn btn-ghost" data-no-aplica="${idx}">No aplica</button>
       </div>`;
     }).join("");
     pendientesList.querySelectorAll("[data-resolver]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
-        const [eventId,tid] = btn.dataset.resolver.split("|");
-        const input = pendientesList.querySelector(`.input-fecha-libranza[data-event="${eventId}"][data-tid="${tid}"]`);
+        const p = pendientes[+btn.dataset.resolver];
+        const input = pendientesList.querySelector(`.input-fecha-libranza[data-idx="${btn.dataset.resolver}"]`);
         if(!input.value) return toast("Elige una fecha para la libranza");
-        resolverLibranzaPendiente(eventId, tid, input.value);
+        if(p.origen==="evento") resolverLibranzaPendiente(p.eventId, p.tid, input.value);
+        else resolverLibranzaPendienteAusencia(p.tid, p.fechaTrabajada, p.etiqueta, input.value);
       });
     });
     pendientesList.querySelectorAll("[data-no-aplica]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
-        const [eventId,tid] = btn.dataset.noAplica.split("|");
-        marcarLibranzaNoNecesaria(eventId, tid);
+        const p = pendientes[+btn.dataset.noAplica];
+        if(p.origen==="evento") marcarLibranzaNoNecesaria(p.eventId, p.tid);
+        else marcarLibranzaNoNecesariaAusencia(p.tid, p.fechaTrabajada);
       });
     });
   }
@@ -3769,7 +3795,7 @@ function renderAusencias(){
       descansoRow.classList.toggle("hidden", !necesitaHorario);
       tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
       lugarRow.classList.toggle("hidden", !necesitaLugar);
-      notaRow.classList.toggle("hidden", tipo!=="manual" && tipo!=="mites");
+      notaRow.classList.toggle("hidden", false); // la nota está disponible para cualquier categoría (útil para anotar a qué día compensa una libranza, por ejemplo)
       if((tipo==="oficina"||tipo==="teletrabajo") && !horarioInput.value){
         const nombreTecSel = STATE.tecnicos[document.getElementById("ausTecnico").value]?.nombre || "";
         horarioInput.value = horarioOficinaDefecto(nombreTecSel);
@@ -3874,7 +3900,7 @@ function renderAusencias(){
       const necesitaHorario = tipo==="oficina"||tipo==="manual"||tipo==="teletrabajo"||tipo==="mites";
       const necesitaLugar = tipo==="oficina"||tipo==="manual"||tipo==="mites";
       const horario = necesitaHorario ? horarioInput.value : "";
-      const nota = (tipo==="manual"||tipo==="mites") ? document.getElementById("ausNota").value : "";
+      const nota = document.getElementById("ausNota").value;
       const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
       const tipoAsignacion = necesitaHorario ? tipoAsignacionSelect.value : "";
       const lugar = necesitaLugar ? lugarInput.value : "";
