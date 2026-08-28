@@ -487,6 +487,8 @@
     box-shadow:0 1px 2px rgba(0,0,0,.05);
   }
   .turno-block:last-child{margin-bottom:0;}
+  .turno-block-clicable{cursor:pointer;transition:outline .1s ease;}
+  .turno-block-clicable:hover{outline:2px solid var(--teal);outline-offset:-1px;}
   .turno-block.turno-defecto{
     border-left-style:dashed;
     background:#FDFBF4;
@@ -785,11 +787,6 @@
       <div id="avisosCambiosList"></div>
     </div>
     <div class="card" id="asignarWeek"></div>
-    <div class="modal-overlay hidden" id="asignarDetalleCard">
-      <div class="modal-box">
-        <div id="asignarDetalle"></div>
-      </div>
-    </div>
   </section>
 
   <!-- VISTA TÉCNICO -->
@@ -938,6 +935,11 @@
     </main>
 
     <footer>Uso interno — Scope Producciones</footer>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="asignarDetalleCard">
+  <div class="modal-box">
+    <div id="asignarDetalle"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -1445,6 +1447,16 @@ function cerrarModalAsignacion(){
   eventoSeleccionado = null;
   editandoTecnicoId = null;
   document.getElementById("asignarDetalleCard").classList.add("hidden");
+}
+/* Abre el modal de información del evento desde cualquier pestaña (por ejemplo, al pinchar
+   una tarjeta de evento en Vista técnico). Funciona igual para admin y no-admin: los campos
+   ya se deshabilitan solos para quien no sea admin dentro de renderAsignarDetalle. */
+function abrirModalVerEvento(eventId){
+  if(!STATE.eventos[eventId]) return;
+  eventoSeleccionado = eventId;
+  editandoTecnicoId = null;
+  document.getElementById("asignarDetalleCard").classList.remove("hidden");
+  renderAsignarDetalle(eventId);
 }
 document.getElementById("asignarDetalleCard").addEventListener("click", (e)=>{
   if(e.target.id === "asignarDetalleCard") cerrarModalAsignacion();
@@ -3149,7 +3161,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     eventosDia.forEach(([id,ev])=>{
       const datos = STATE.asignaciones[id][tecnicoId];
       const rango = rangoEventoConFallback(datos, ev);
-      segmentos.push({ inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
+      segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
     });
     return segmentos;
   }
@@ -3188,8 +3200,8 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
   baseRangos.forEach(baseRango=>{
     segmentos.push({ inicio:baseRango.inicio, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso, lugar:baseLugar, sala:baseSala, tipoAsignacion:baseTipoAsignacion });
   });
-  eventosOnline.forEach(({ev,rango,datos})=>{
-    segmentos.push({ inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
+  eventosOnline.forEach(({id,ev,rango,datos})=>{
+    segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
   });
   segmentos.sort((a,b)=> a.inicio-b.inicio);
 
@@ -3207,14 +3219,16 @@ function segmentosATarjetasHTML(segmentos){
       return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}</div>`;
     }
     const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="presencial" ? "🏢 " : "");
+    const verEvento = seg.tipo==="evento" && seg.id ? `data-ver-evento="${seg.id}"` : "";
+    const claseClicable = seg.tipo==="evento" && seg.id ? "turno-block-clicable" : "";
     if(seg.inicio==null || seg.fin==null){
       // Evento de todo el día sin hora concreta (no se puede posicionar en la franja horaria)
-      return `<div class="turno-block" style="border-left-color:${seg.color};">
+      return `<div class="turno-block ${claseClicable}" style="border-left-color:${seg.color};" ${verEvento}>
         <div class="turno-cliente">${icono}${seg.label}</div>
       </div>`;
     }
     const horaTxt = `${minutosAHora(seg.inicio%1440)} → ${minutosAHora(seg.fin%1440)}`;
-    return `<div class="turno-block" style="border-left-color:${seg.color};">
+    return `<div class="turno-block ${claseClicable}" style="border-left-color:${seg.color};" ${verEvento}>
       <div class="turno-horario">${horaTxt}</div>
       ${timelineHTML({ inicio:seg.inicio, fin:seg.fin })}
       <div class="turno-cliente">${icono}${seg.label}</div>
@@ -3275,6 +3289,12 @@ function renderTecnicoSemana(tecnicoId, grid){
       renderVistaTecnico();
     });
   });
+  grid.querySelectorAll("[data-ver-evento]").forEach(card=>{
+    card.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      abrirModalVerEvento(card.dataset.verEvento);
+    });
+  });
   if(isAdmin){
     grid.querySelectorAll("[data-editar-dia]").forEach(cell=>{
       cell.addEventListener("click", ()=> abrirEditorDiaTecnico(tecnicoId, cell.dataset.editarDia));
@@ -3332,6 +3352,12 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
   const maxMes = horasMaximasTecnico(nombreTecnico, inicioMes, finMes);
   html += footerTotalHTML("Total del mes", totalMes, maxMes);
   grid.innerHTML = html;
+  grid.querySelectorAll("[data-ver-evento]").forEach(card=>{
+    card.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      abrirModalVerEvento(card.dataset.verEvento);
+    });
+  });
   grid.querySelectorAll("[data-editar-dia]").forEach(cell=>{
     cell.addEventListener("click", ()=> abrirEditorDiaTecnico(tecnicoId, cell.dataset.editarDia));
   });
