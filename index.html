@@ -838,6 +838,11 @@
       <p class="muted" id="arreglarTeletrabajoStatus"></p>
     </div>
     <div class="card">
+      <p class="muted" style="margin-top:0;">Las libranzas compensatorias creadas antes de que la nota incluyera la fecha del día trabajado se quedaron con el texto genérico. Este botón busca a qué día corresponde cada una y actualiza la nota para incluirlo.</p>
+      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarLibranzas">Añadir fecha a las notas de libranza compensatoria</button>
+      <p class="muted" id="arreglarLibranzasStatus"></p>
+    </div>
+    <div class="card">
       <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Calendarios</h3>
       <p class="muted" style="margin-top:0;">Añade aquí un nuevo calendario de Google (el ID lo encuentras en Google Calendar → los tres puntos junto al calendario → Configuración y uso compartido → Integrar calendario).</p>
       <div class="row row-compact">
@@ -1100,6 +1105,13 @@ function toast(msg){
 function fmtFecha(iso){
   const d = new Date(iso);
   return d.toLocaleDateString("es-ES", { weekday:"short", day:"2-digit", month:"short" });
+}
+/* Texto de la nota que se guarda en una libranza compensatoria, incluyendo la fecha
+   del día de fin de semana/festivo que compensa, para saber de un vistazo a qué corresponde. */
+function notaLibranzaCompensatoria(eventId){
+  const evento = STATE.eventos[eventId];
+  const fechaTxt = evento ? fmtFecha(evento.start) : "";
+  return `Compensa trabajo en fin de semana/festivo${fechaTxt ? ` (${fechaTxt})` : ""}`;
 }
 function isoDate(d){
   const y = d.getFullYear();
@@ -1668,6 +1680,40 @@ document.getElementById("btnArreglarTeletrabajo").addEventListener("click", asyn
   toast(`${corregidas} entrada${corregidas>1?"s":""} corregida${corregidas>1?"s":""}`);
 });
 
+document.getElementById("btnArreglarLibranzas").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("arreglarLibranzasStatus");
+  // Para cada libranza con la nota antigua (sin fecha), buscamos en las asignaciones qué evento
+  // la referencia (asignaciones/{eventId}/{tid}/libranzaCompensatoria === esta fecha) y de ahí
+  // sacamos la fecha del día trabajado que compensa.
+  const updates = {};
+  let corregidas = 0, sinEncontrar = 0;
+  Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
+    Object.entries(porFecha||{}).forEach(([fechaLibranza, datos])=>{
+      if(datos.tipo!=="libranza" || datos.nota!=="Compensa trabajo en fin de semana/festivo") return;
+      let eventIdEncontrado = null;
+      for(const [eventId, porTecnico] of Object.entries(STATE.asignaciones)){
+        if(porTecnico?.[tid]?.libranzaCompensatoria === fechaLibranza){
+          eventIdEncontrado = eventId;
+          break;
+        }
+      }
+      if(eventIdEncontrado){
+        updates[`ausencias/${tid}/${fechaLibranza}/nota`] = notaLibranzaCompensatoria(eventIdEncontrado);
+        corregidas++;
+      } else {
+        sinEncontrar++;
+      }
+    });
+  });
+  if(corregidas===0 && sinEncontrar===0){
+    statusEl.textContent = "No había ninguna libranza compensatoria con la nota antigua. Todo en orden.";
+    return;
+  }
+  if(corregidas>0) await update(ref(db), updates);
+  statusEl.textContent = `${corregidas} nota${corregidas>1?"s":""} actualizada${corregidas>1?"s":""} con su fecha.` + (sinEncontrar>0 ? ` ${sinEncontrar} no se pudo${sinEncontrar>1?"ieron":""} vincular a ningún evento (puede que el evento se haya borrado desde entonces) y se ha${sinEncontrar>1?"n":""} dejado igual.` : "");
+  toast(`${corregidas} nota${corregidas>1?"s":""} actualizada${corregidas>1?"s":""}`);
+});
+
 /* ---------- GESTIÓN DE CALENDARIOS ---------- */
 document.getElementById("btnAnadirCalendario").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("calendarioStatus");
@@ -1922,7 +1968,7 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
       libranzaCompensatoria: libranzaCompensatoria || null
     };
     if(libranzaCompensatoria){
-      updates[`ausencias/${tid}/${libranzaCompensatoria}`] = { tipo:"libranza", nota:"Compensa trabajo en fin de semana/festivo" };
+      updates[`ausencias/${tid}/${libranzaCompensatoria}`] = { tipo:"libranza", nota:notaLibranzaCompensatoria(eventId) };
     }
   });
   await update(ref(db), updates);
@@ -1942,7 +1988,7 @@ async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipo
   if(libranzaCompensatoria!==undefined) updates.libranzaCompensatoria = libranzaCompensatoria || null;
   const dbUpdates = { [`asignaciones/${eventId}/${tecnicoId}`]: updates };
   if(libranzaCompensatoria){
-    dbUpdates[`ausencias/${tecnicoId}/${libranzaCompensatoria}`] = { tipo:"libranza", nota:"Compensa trabajo en fin de semana/festivo" };
+    dbUpdates[`ausencias/${tecnicoId}/${libranzaCompensatoria}`] = { tipo:"libranza", nota:notaLibranzaCompensatoria(eventId) };
   }
   await update(ref(db), dbUpdates);
   try{ await actualizarDescripcionEvento(eventId); }
@@ -2016,7 +2062,7 @@ function obtenerLibranzasPendientes(){
 async function resolverLibranzaPendiente(eventId, tid, fecha){
   await update(ref(db), {
     [`asignaciones/${eventId}/${tid}/libranzaCompensatoria`]: fecha,
-    [`ausencias/${tid}/${fecha}`]: { tipo:"libranza", nota:"Compensa trabajo en fin de semana/festivo" }
+    [`ausencias/${tid}/${fecha}`]: { tipo:"libranza", nota:notaLibranzaCompensatoria(eventId) }
   });
   toast("Libranza compensatoria asignada");
 }
@@ -2551,7 +2597,7 @@ function renderAsignarDetalle(eventId){
         const anterior = asign[editandoTecnicoId]?.libranzaCompensatoria;
         if(anterior && anterior!=="no_aplica" && anterior!==libranzaCompensatoria){
           const entradaAnterior = STATE.ausencias[editandoTecnicoId]?.[anterior];
-          if(entradaAnterior?.tipo==="libranza" && entradaAnterior?.nota==="Compensa trabajo en fin de semana/festivo"){
+          if(entradaAnterior?.tipo==="libranza" && entradaAnterior?.nota?.startsWith("Compensa trabajo en fin de semana/festivo")){
             await removeAusencia(editandoTecnicoId, anterior);
           }
         }
