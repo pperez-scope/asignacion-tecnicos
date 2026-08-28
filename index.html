@@ -2701,6 +2701,17 @@ function renderAsignarDetalle(eventId){
       Es una nota/aviso del calendario, no un servicio a cubrir (no mostrar en "Sin cubrir")
     </label>
     <button class="btn btn-ghost" id="btnGuardarModalidad" style="margin:-6px 0 12px;">Guardar modalidad / informe</button>
+    ${(evento.modalidad || evento.excluirInforme || evento.excluirSinCubrir) ? `
+    <div style="margin:-6px 0 12px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;background:#E4F2E6;border:1px solid var(--teal);color:var(--teal);padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:600;">
+        ✓ Guardado: ${[
+          evento.modalidad ? (evento.modalidad==="online"?"💻 Online":"🏢 Presencial") : null,
+          evento.excluirInforme ? "no cuenta en el informe" : null,
+          evento.excluirSinCubrir ? "es una nota, no un servicio" : null
+        ].filter(Boolean).join(" · ")}
+      </span>
+    </div>
+    ` : ""}
     ` : (evento.modalidad ? `
     <p class="muted" style="margin:0 0 12px;">${evento.modalidad==="online"?"💻 Online":"🏢 Presencial"}</p>
     ` : "")}
@@ -3091,11 +3102,15 @@ function horasDiaTecnico(tecnicoId, fechaIso){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   const todosOnline = eventosDia.length>0 && eventosDia.every(([,ev])=> ev.modalidad==="online");
   const hayEventoPresencial = eventosDia.length>0 && !todosOnline;
+  const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
 
   // Un evento presencial ocupa al técnico físicamente, así que sus horas mandan sobre lo demás.
   if(hayEventoPresencial){
     return eventosDia.reduce((sum,[id])=> sum + duracionTurnoHoras(STATE.asignaciones[id][tecnicoId]), 0);
   }
+  // Sin evento presencial: la base (ausencia explícita, o la Oficina Scope por defecto) manda
+  // sobre las horas de los eventos online, ya que esos ocurren DENTRO de esa misma jornada y no
+  // hay que sumarlos aparte (si no, se duplicarían las horas trabajadas ese rato).
   if(ausencia){
     if((ausencia.tipo==="oficina" || ausencia.tipo==="manual" || ausencia.tipo==="teletrabajo" || ausencia.tipo==="mites") && ausencia.horario){
       let horas = horasDesdeTextoLibre(ausencia.horario);
@@ -3104,15 +3119,13 @@ function horasDiaTecnico(tecnicoId, fechaIso){
     }
     return 0;
   }
-  // Sin ausencia: si hay evento(s) online, sus horas son las que cuentan (no hay office-default con el
-  // que sumar, ya que ambos representarían el mismo tiempo de trabajo y no queremos duplicarlo).
+  if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
+    return Math.max(0, horasDesdeTextoLibre(horarioOficinaDefecto(nombreTecnico)) - descansoOficinaDefecto(nombreTecnico)/60);
+  }
+  // Ni ausencia ni Oficina Scope por defecto (p.ej. personal externo/esporádico): en ese caso,
+  // si hay evento(s) online igualmente asignados, sus horas son las únicas que hay que contar.
   if(eventosDia.length){
     return eventosDia.reduce((sum,[id])=> sum + duracionTurnoHoras(STATE.asignaciones[id][tecnicoId]), 0);
-  }
-  if(esDiaLaborable(parseIsoLocal(fechaIso))){
-    const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
-    if(SIN_OFICINA_DEFECTO.includes(nombreTecnico)) return 0;
-    return Math.max(0, horasDesdeTextoLibre(horarioOficinaDefecto(nombreTecnico)) - descansoOficinaDefecto(nombreTecnico)/60);
   }
   return 0;
 }
