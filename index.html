@@ -144,24 +144,16 @@
   }
   nav.tabs button.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--amber);}
   .tab-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
-
-  #bannerLibranzas{
-    background:#FDE7E1;
-    border-bottom:2px solid var(--danger);
-    color:#7A2E1D;
-    padding:9px 16px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-    font-size:13px;
-    font-weight:600;
-    text-align:center;
-    flex-wrap:wrap;
-  }
-  #bannerLibranzas button{
-    background:var(--danger);color:#fff;border:none;
-    padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;
+  .tab-badge{
+    margin-left:auto;
+    background:var(--danger);
+    color:#fff;
+    font-size:10.5px;
+    font-weight:700;
+    line-height:1;
+    padding:3px 6px;
+    border-radius:999px;
+    flex-shrink:0;
   }
 
   main{padding:16px;max-width:1300px;margin:0 auto;width:100%;box-sizing:border-box;}
@@ -180,9 +172,11 @@
       flex-direction:column;gap:2px;white-space:nowrap;
       border-left:none;border-bottom:3px solid transparent;border-radius:0;
       padding:10px 12px;font-size:11px;
+      position:relative;
     }
     nav.tabs button.active{background:transparent;border-left-color:transparent;border-bottom-color:var(--amber);}
     .tab-icon{font-size:15px;width:auto;}
+    .tab-badge{position:absolute;top:4px;right:4px;margin-left:0;}
     .auth-box{border-top:none;flex-direction:row;align-items:center;padding:6px 10px;width:auto;}
   }
   .card{
@@ -734,7 +728,7 @@
       <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span></button>
       <button data-tab="tecnico"><span class="tab-icon">👤</span><span>Vista técnico</span></button>
       <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span></button>
-      <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span></button>
+      <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span><span class="tab-badge hidden" id="badgeLibranzas"></span></button>
       <button data-tab="admin" id="tabAdminBtn" class="hidden"><span class="tab-icon">⚙️</span><span>Admin</span></button>
     </nav>
     <div class="auth-box" id="authBox">
@@ -743,8 +737,6 @@
   </aside>
 
   <div class="app-content">
-    <div id="bannerLibranzas" class="hidden"></div>
-
     <main>
 
   <!-- SIN CUBRIR -->
@@ -2136,24 +2128,22 @@ async function marcarLibranzaNoNecesariaAusencia(tid, fechaTrabajada){
 
 /* ---------- RENDER ---------- */
 function renderBannerLibranzas(){
-  const banner = document.getElementById("bannerLibranzas");
+  const badge = document.getElementById("badgeLibranzas");
+  if(!badge) return;
   if(!isAdmin){
-    banner.classList.add("hidden");
-    banner.innerHTML = "";
+    badge.classList.add("hidden");
+    badge.textContent = "";
     return;
   }
   const pendientes = obtenerLibranzasPendientes();
   if(pendientes.length===0){
-    banner.classList.add("hidden");
-    banner.innerHTML = "";
+    badge.classList.add("hidden");
+    badge.textContent = "";
     return;
   }
-  banner.classList.remove("hidden");
-  banner.innerHTML = `⚠️ ${pendientes.length} libranza${pendientes.length>1?"s":""} compensatoria${pendientes.length>1?"s":""} pendiente${pendientes.length>1?"s":""} de asignar (trabajo en fin de semana/festivo)
-    <button id="btnVerLibranzasPendientes">Ver</button>`;
-  document.getElementById("btnVerLibranzasPendientes").addEventListener("click", ()=>{
-    document.querySelector('nav.tabs button[data-tab="ausencias"]').click();
-  });
+  badge.classList.remove("hidden");
+  badge.textContent = pendientes.length;
+  badge.title = `${pendientes.length} libranza${pendientes.length>1?"s":""} compensatoria${pendientes.length>1?"s":""} pendiente${pendientes.length>1?"s":""} de asignar`;
 }
 
 function render(){
