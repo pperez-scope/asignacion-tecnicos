@@ -38,6 +38,7 @@
     background:var(--bg);
     color:var(--ink);
     font-family:var(--font-body);
+    font-size:14px;
     padding-top:var(--safe-top);
     padding-bottom:var(--safe-bottom);
     -webkit-font-smoothing:antialiased;
@@ -94,7 +95,7 @@
   }
   .auth-box{
     display:flex;flex-direction:column;align-items:stretch;gap:8px;
-    font-size:12.5px;padding:14px 16px;
+    font-size:13px;padding:14px 16px;
     border-top:1px solid rgba(255,255,255,.15);
   }
   .btn{
@@ -137,7 +138,7 @@
     border-radius:7px;
     padding:10px 10px;
     font-family:var(--font-body);
-    font-size:13.5px;
+    font-size:14px;
     font-weight:600;
     white-space:normal;
     cursor:pointer;
@@ -148,7 +149,7 @@
     margin-left:auto;
     background:var(--danger);
     color:#fff;
-    font-size:10.5px;
+    font-size:11px;
     font-weight:700;
     line-height:1;
     padding:3px 6px;
@@ -186,14 +187,6 @@
     padding:16px;
     margin-bottom:14px;
   }
-  h2.section-title{
-    font-family:var(--font-display);
-    text-transform:uppercase;
-    letter-spacing:.04em;
-    font-size:22px;
-    margin:4px 0 14px;
-    color:var(--navy);
-  }
   .muted{color:var(--ink-soft);font-size:13px;}
   .empty-state{
     text-align:center;
@@ -215,7 +208,7 @@
   }
   .segmented button.active{background:var(--navy);color:#fff;}
   .segmented button+button{border-left:1px solid var(--line);}
-  .segmented-compact button{padding:6px 12px;font-size:12.5px;}
+  .segmented-compact button{padding:6px 12px;font-size:13px;}
 
   input,select,textarea{
     font-family:inherit;
@@ -240,7 +233,7 @@
     padding:3px 0;
   }
   .check-item-row .check-item{flex:1;min-width:0;}
-  .check-item-row select{width:150px;flex-shrink:0;padding:6px 8px;font-size:12.5px;}
+  .check-item-row select{width:150px;flex-shrink:0;padding:6px 8px;font-size:13px;}
   .check-item{
     display:flex;align-items:center;gap:6px;
     font-size:13px;font-weight:400;color:var(--ink);
@@ -254,7 +247,7 @@
   }
   .week-range{
     font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
-    font-size:17px;color:var(--navy);
+    font-size:18px;color:var(--navy);
   }
   .week-grid{
     display:grid;
@@ -291,7 +284,7 @@
     border-left-width:4px;
     border-left-style:solid;
     background:#fff;
-    font-size:11.5px;
+    font-size:12px;
     transition:transform .08s ease;
   }
   .week-event:hover{transform:translateY(-1px);}
@@ -302,7 +295,7 @@
   .week-event-tecnicos{display:block;font-size:10px;color:var(--teal);margin-top:2px;}
   .week-event-pendiente{
     display:inline-block;margin-top:2px;
-    font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+    font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
     color:var(--danger);background:#FDE7E1;
     padding:1px 5px;border-radius:999px;
   }
@@ -323,7 +316,7 @@
   .opciones-avanzadas summary{
     cursor:pointer;
     padding:9px 0;
-    font-size:12.5px;
+    font-size:13px;
     font-weight:600;
     color:var(--teal);
     list-style:none;
@@ -385,7 +378,7 @@
     color:#fff;
     padding:4px 10px 4px 4px;
     border-radius:999px;
-    font-size:12.5px;
+    font-size:13px;
     margin:2px 4px 2px 0;
   }
   .chip .avatar{
@@ -441,7 +434,7 @@
   .day-cell.ausencia-manual{background:#EEEBF6;}
   .day-cell.ausencia-mites{background:#EEE7F6;}
   .day-cell.ausencia-bajaMedica{background:#EFF0F1;}
-  .day-cell .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+  .day-cell .tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
 
   /* Bloque de turno: horario grande e inequívoco (entrada → salida), mini línea de tiempo y descanso aparte */
   .turno-block{
@@ -470,7 +463,7 @@
     line-height:1.15;
   }
   .turno-acto-hora{
-    font-size:9.5px;
+    font-size:10px;
     font-weight:600;
     color:var(--amber-ink);
     background:var(--amber);
@@ -480,7 +473,7 @@
     margin-top:2px;
   }
   .turno-cliente{
-    font-size:10.5px;
+    font-size:11px;
     font-weight:600;
     color:var(--ink);
     margin-top:3px;
@@ -499,26 +492,26 @@
     padding:1px 5px;
   }
   .turno-descanso{
-    font-size:9.5px;
+    font-size:10px;
     color:var(--ink-soft);
     margin-top:3px;
   }
   .turno-adjunto{
     display:inline-block;
-    font-size:9.5px;
+    font-size:10px;
     font-weight:600;
     color:var(--teal);
     text-decoration:underline;
     margin-top:3px;
   }
   .turno-nota{
-    font-size:9.5px;
+    font-size:10px;
     color:var(--ink-soft);
     margin-top:3px;
     font-style:italic;
   }
   .turno-lugar{
-    font-size:9.5px;
+    font-size:10px;
     font-weight:600;
     color:var(--navy);
     margin-top:3px;
@@ -539,7 +532,7 @@
   .day-total-horas{
     margin-top:5px;padding-top:4px;
     border-top:1px dashed var(--line);
-    font-size:10.5px;font-weight:700;color:var(--teal);text-align:right;
+    font-size:11px;font-weight:700;color:var(--teal);text-align:right;
   }
   .week-total-cell{
     background:var(--mint);
@@ -550,7 +543,7 @@
     color:var(--teal);min-height:96px;text-align:center;
   }
   .week-total-cell.excede{background:#FDE7E1;color:var(--danger);}
-  .week-total-max{font-family:var(--font-body);font-weight:600;font-size:9.5px;color:var(--ink-soft);}
+  .week-total-max{font-family:var(--font-body);font-weight:600;font-size:10px;color:var(--ink-soft);}
   .week-total-cell.excede .week-total-max{color:var(--danger);}
   .periodo-total-footer{
     text-align:right;
@@ -559,7 +552,7 @@
     font-size:15px;color:var(--navy);
     padding:6px 4px 0;
   }
-  .periodo-total-footer strong{color:var(--amber);font-size:17px;}
+  .periodo-total-footer strong{color:var(--amber);font-size:18px;}
   .periodo-total-max{font-family:var(--font-body);text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink-soft);}
   .periodo-total-footer.excede strong{color:var(--danger);}
   .periodo-total-aviso{
@@ -587,7 +580,7 @@
     border-spacing:0;
     width:100%;
     table-layout:fixed;
-    font-size:10.5px;
+    font-size:11px;
   }
   .col-tecnico{width:140px;}
   table.general-table th, table.general-table td{
@@ -601,7 +594,7 @@
   table.general-table th{background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;z-index:3;}
   table.general-table th.th-tecnico{position:sticky;left:0;top:0;z-index:4;}
   table.general-table th .th-letra{
-    display:block;font-size:8.5px;font-weight:700;letter-spacing:.04em;
+    display:block;font-size:9px;font-weight:700;letter-spacing:.04em;
     color:#B7C7C4;text-transform:uppercase;line-height:1.3;
   }
   table.general-table th .th-num{display:block;font-size:11px;line-height:1.3;}
@@ -609,7 +602,7 @@
   table.general-table th.col-finde .th-letra{color:var(--amber);}
   table.general-table td.tecnico-name{
     text-align:left;font-weight:700;position:sticky;left:0;z-index:1;
-    background:#fff;font-size:10.5px;
+    background:#fff;font-size:11px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;
     box-shadow:inset -2px 0 0 0 var(--navy),inset 0 -1px 0 0 var(--line);
   }
@@ -683,7 +676,7 @@
   }
   table.lista-tecnico-table th{
     background:var(--navy);color:#fff;font-weight:600;position:sticky;top:0;z-index:2;
-    font-size:9.5px;text-transform:uppercase;letter-spacing:.02em;white-space:normal;
+    font-size:10px;text-transform:uppercase;letter-spacing:.02em;white-space:normal;
   }
   table.lista-tecnico-table td:first-child, table.lista-tecnico-table td:nth-child(2){
     font-weight:700;color:var(--navy);background:#fff;
@@ -721,7 +714,7 @@
 <div class="app-shell">
   <aside class="sidebar">
     <div class="brand">
-      <div class="app-name">Asignación<small>Scope Producciones</small></div>
+      <div class="app-name">Planning<small>Scope Producciones</small></div>
     </div>
     <nav class="tabs" id="tabs">
       <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn"><span class="tab-icon">📋</span><span>Sin cubrir</span></button>
@@ -794,7 +787,7 @@
   <section id="view-general" class="hidden">
     <div class="card" style="padding:6px 14px;">
       <div class="row" style="align-items:center;">
-        <p class="muted" style="margin:0;flex:1;font-size:12.5px;">4 semanas visibles (anterior, actual y 2 siguientes) · desliza para ver más</p>
+        <p class="muted" style="margin:0;flex:1;font-size:13px;">4 semanas visibles (anterior, actual y 2 siguientes) · desliza para ver más</p>
         <button class="btn btn-ghost" id="btnCuadranteHoy" style="padding:5px 12px;font-size:12px;">Ir a hoy</button>
       </div>
     </div>
@@ -2479,7 +2472,7 @@ function renderAsignarDetalle(eventId){
 
   cont.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-      <h3 style="margin:0;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.02em;font-size:19px;color:var(--navy);line-height:1.2;">${evento.summary}</h3>
+      <h3 style="margin:0;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.02em;font-size:18px;color:var(--navy);line-height:1.2;">${evento.summary}</h3>
       <button class="btn btn-ghost" id="btnCerrarDetalle" style="flex-shrink:0;">Cerrar</button>
     </div>
     <p class="muted" style="margin-top:4px;">${CALENDARIOS[evento.calendario]?.nombre || evento.calendario} · ${fmtFecha(evento.start)} · ${fmtHora(evento.start)}–${fmtHora(evento.end)}
