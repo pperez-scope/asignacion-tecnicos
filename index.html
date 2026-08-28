@@ -472,7 +472,7 @@
       width:max-content;
     }
     .tecnico-mes-scroll{overflow-x:auto;padding-bottom:4px;}
-    .month-grid-eventos .day-cell, .tecnico-mes-grid .day-cell{min-height:80px;font-size:10.5px;}
+    .month-grid-eventos .day-cell, .tecnico-mes-grid .day-cell{min-height:80px;font-size:11px;}
     .month-grid-eventos .weekday-label, .tecnico-mes-grid .weekday-label{font-size:10px;}
     /* Semana de Vista técnico: se apila en columna (una fila por día) en vez de 7 columnas */
     .tecnico-week-grid{grid-template-columns:1fr;gap:8px;}
@@ -482,12 +482,12 @@
 
   /* Otras asignaciones: todo más agrupado y compacto */
   #view-ausencias .card{padding:14px 16px;margin-bottom:10px;}
-  #view-ausencias label{font-size:10.5px;margin-bottom:3px;}
+  #view-ausencias label{font-size:11px;margin-bottom:3px;}
   #view-ausencias .field{margin-bottom:8px;}
   #view-ausencias .row{gap:8px;margin-bottom:0;}
   #view-ausencias input,#view-ausencias select{padding:7px 9px;font-size:13px;}
-  #view-ausencias .btn{padding:7px 12px;font-size:12.5px;}
-  #view-ausencias .event-row{padding:8px 0;font-size:12.5px;}
+  #view-ausencias .btn{padding:7px 12px;font-size:13px;}
+  #view-ausencias .event-row{padding:8px 0;font-size:13px;}
   #view-ausencias .event-fecha{font-size:13px;min-width:96px;}
   .ausencias-layout{display:flex;gap:18px;align-items:flex-start;}
   .ausencias-col-form{flex:0 0 300px;}
@@ -749,7 +749,7 @@
   @media (max-width:700px){
     table.cuadrante-table{table-layout:fixed;}
     table.cuadrante-table .celda-color{height:15px;}
-    table.cuadrante-table th .th-num{font-size:9.5px;}
+    table.cuadrante-table th .th-num{font-size:9px;}
     table.cuadrante-table th .th-letra{font-size:8px;}
     table.cuadrante-table td.tecnico-name{font-size:10px;}
   }
@@ -2765,7 +2765,7 @@ function renderAsignarDetalle(eventId){
     <button class="btn btn-ghost" id="btnGuardarModalidad" style="margin:-6px 0 12px;">Guardar modalidad / informe</button>
     ${(evento.modalidad || evento.excluirInforme || evento.excluirSinCubrir) ? `
     <div style="margin:-6px 0 12px;">
-      <span style="display:inline-flex;align-items:center;gap:6px;background:#E4F2E6;border:1px solid var(--teal);color:var(--teal);padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:600;">
+      <span style="display:inline-flex;align-items:center;gap:6px;background:#E4F2E6;border:1px solid var(--teal);color:var(--teal);padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;">
         ✓ Guardado: ${[
           evento.modalidad ? textoModalidad(evento.modalidad) : null,
           evento.excluirInforme ? "no cuenta en el informe" : null,
@@ -4247,7 +4247,7 @@ function renderAusencias(){
       <h3 style="margin:0;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:14px;">Entradas de ${nombreTecListado}</h3>
       ${lista.length>PORPAGINA ? `<div style="display:flex;align-items:center;gap:8px;">
         <button class="btn btn-ghost" id="btnAusPaginaAnterior" ${paginaEntradasAusencia===0?"disabled":""}>‹</button>
-        <span class="muted" style="font-size:11.5px;white-space:nowrap;">${paginaEntradasAusencia+1} / ${totalPaginas}</span>
+        <span class="muted" style="font-size:11px;white-space:nowrap;">${paginaEntradasAusencia+1} / ${totalPaginas}</span>
         <button class="btn btn-ghost" id="btnAusPaginaSiguiente" ${paginaEntradasAusencia>=totalPaginas-1?"disabled":""}>›</button>
       </div>` : ""}
     </div>
