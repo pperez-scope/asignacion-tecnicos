@@ -1478,7 +1478,7 @@ function renderAuthBox(){
     box.innerHTML = `<span class="muted" style="color:#C7CFD8;">Sin permiso de edición</span>
       <button class="btn btn-outline" id="btnLogout">Salir</button>`;
   } else {
-    box.innerHTML = `<button class="btn btn-amber" id="btnLogin"><span class="texto-largo">Entrar como admin</span><span class="texto-corto">Admin</span></button>`;
+    box.innerHTML = `<button class="btn btn-amber" id="btnLogin" title="Entrar como administrador"><span class="texto-largo">⚙️ Entrar como admin</span><span class="texto-corto">⚙️ Admin</span></button>`;
   }
 }
 
@@ -3547,9 +3547,9 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
       const diaCell = idx===0 ? `<td rowspan="${filasDia.length}">${diaTxt}</td><td rowspan="${filasDia.length}">${fechaTxt}</td>` : "";
       const fondoPastel = tintClaro(f.color, 0.85);
       if(f.especial){
-        filas += `<tr style="background:${fondoPastel};border-left:4px solid ${f.color};">${diaCell}<td colspan="8" style="text-align:center;font-weight:700;">${f.texto}</td><td>00:00</td></tr>`;
+        filas += `<tr style="background:${fondoPastel};border-left:4px solid ${f.color};font-size:11px;">${diaCell}<td colspan="8" style="text-align:center;">${f.texto}</td><td>00:00</td></tr>`;
       } else {
-        filas += `<tr style="background:${fondoPastel};border-left:4px solid ${f.color};">
+        filas += `<tr style="background:${fondoPastel};border-left:4px solid ${f.color};font-size:11px;">
           ${diaCell}
           <td>${f.turno}</td><td style="white-space:normal;text-align:left;">${f.lugar}</td>
           <td>${f.entrada}</td><td>${f.salida}</td>
