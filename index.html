@@ -445,7 +445,14 @@
   #view-ausencias .btn{padding:7px 12px;font-size:12.5px;}
   #view-ausencias .event-row{padding:8px 0;font-size:12.5px;}
   #view-ausencias .event-fecha{font-size:13px;min-width:96px;}
-  .ausencias-divider{border:none;border-top:1px solid var(--line);margin:14px 0;}
+  .ausencias-layout{display:flex;gap:18px;align-items:flex-start;}
+  .ausencias-col-form{flex:0 0 300px;}
+  .ausencias-col-lista{flex:1;min-width:260px;border-left:1px solid var(--line);padding-left:18px;}
+  @media (max-width:760px){
+    .ausencias-layout{flex-direction:column;}
+    .ausencias-col-form{flex:1 1 auto;width:100%;}
+    .ausencias-col-lista{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:14px;width:100%;}
+  }
   .day-cell.tiene-evento{background:#FDFCFA;border-color:var(--amber);}
   .day-cell.ausencia-libranza{background:#E4F2E6;}
   .day-cell.ausencia-permiso{background:#E2F4F1;}
@@ -827,11 +834,12 @@
       <div id="libranzasPendientesList"></div>
     </div>
     <div class="card">
-      <div id="ausenciasForm">
-        <p class="muted">Inicia sesión como administrador para añadir o quitar ausencias.</p>
+      <div class="ausencias-layout">
+        <div id="ausenciasForm" class="ausencias-col-form">
+          <p class="muted">Inicia sesión como administrador para añadir o quitar ausencias.</p>
+        </div>
+        <div id="ausenciasList" class="ausencias-col-lista"></div>
       </div>
-      <hr class="ausencias-divider">
-      <div id="ausenciasList"></div>
     </div>
   </section>
 
@@ -1235,6 +1243,7 @@ let eventoSeleccionado = null;
 let editandoTecnicoId = null;
 let diaTecnicoEditando = null; // {tecnicoId, fecha} cuando el editor de día está abierto en Vista técnico
 let ultimoTecnicoAusenciasForm = null; // recuerda el técnico elegido en el formulario de Otras asignaciones entre envíos
+let paginaEntradasAusencia = 0; // página actual de la lista de entradas del técnico seleccionado (sin scroll, con flechas)
 let fechasSeleccionadasAusencia = []; // fechas (ISO) acumuladas en el formulario de Otras asignaciones, antes de guardar
 let calendarioAusenciaMes = null; // mes mostrado en el mini-calendario de selección de días
 let ultimoDiaClicadoAusencia = null; // para el mayús+clic (seleccionar un rango entero)
@@ -3703,90 +3712,86 @@ function renderAusencias(){
   const formCont = document.getElementById("ausenciasForm");
   if(isAdmin){
     formCont.innerHTML = `
-      <div class="row">
+      <div class="field">
+        <label>Técnico</label>
+        <select id="ausTecnico">${Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}" ${id===ultimoTecnicoAusenciasForm?"selected":""}>${t.nombre}</option>`).join("")}</select>
+      </div>
+      <div class="field">
+        <label>Categoría</label>
+        <select id="ausTipo">
+          <option value="libranza">Libranza</option>
+          <option value="permiso">Permiso</option>
+          <option value="vacaciones">Vacaciones</option>
+          <option value="bajaMedica">Baja médica</option>
+          <option value="mites">Mites</option>
+          <option value="oficina">Oficina Scope</option>
+          <option value="teletrabajo">Teletrabajo</option>
+          <option value="manual">Asignación manual</option>
+        </select>
+      </div>
+      <div class="row hidden" id="ausTipoAsignacionRow">
         <div class="field">
-          <label>Técnico</label>
-          <select id="ausTecnico">${Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}" ${id===ultimoTecnicoAusenciasForm?"selected":""}>${t.nombre}</option>`).join("")}</select>
-        </div>
-        <div class="field">
-          <label>Categoría</label>
-          <select id="ausTipo">
-            <option value="libranza">Libranza</option>
-            <option value="permiso">Permiso</option>
-            <option value="vacaciones">Vacaciones</option>
-            <option value="bajaMedica">Baja médica</option>
-            <option value="mites">Mites</option>
-            <option value="oficina">Oficina Scope</option>
-            <option value="teletrabajo">Teletrabajo</option>
-            <option value="manual">Asignación manual</option>
+          <label>Tipo de asignación</label>
+          <select id="ausTipoAsignacion">
+            <option value="">Selecciona tipo…</option>
+            ${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}
           </select>
         </div>
       </div>
-      <div class="row" style="align-items:flex-start;flex-wrap:wrap;">
-        <div class="field" style="flex:0 0 270px;">
-          <label>Días (clic para marcar/quitar; mayús+clic para un rango)</label>
-          <div id="ausCalendarioPicker" class="mini-calendario"></div>
-        </div>
-        <div class="field" style="flex:1;min-width:220px;">
-          <label>Días seleccionados</label>
-          <div id="ausFechasChips" style="display:flex;flex-wrap:wrap;gap:6px;min-height:34px;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;margin-bottom:10px;"></div>
-          <div class="row hidden" id="ausTipoAsignacionRow">
-            <div class="field">
-              <label>Tipo de asignación</label>
-              <select id="ausTipoAsignacion">
-                <option value="">Selecciona tipo…</option>
-                ${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}
-              </select>
-            </div>
-          </div>
-          <div class="row hidden" id="ausHorarioRow">
-            <div class="field">
-              <label>Horario</label>
-              <input type="text" id="ausHorario" placeholder="09:00–14:00 y 15:00–18:00">
-            </div>
-          </div>
-          <div class="row hidden" id="ausLugarRow">
-            <div class="field">
-              <label>Lugar</label>
-              <input type="text" id="ausLugar" placeholder="Scope">
-            </div>
-            <div class="field">
-              <label>Sala</label>
-              <input type="text" id="ausSala" placeholder="Opcional">
-            </div>
-          </div>
-          <div class="row hidden" id="ausLugarRow2">
-            <div class="field">
-              <label>Calendario asociado</label>
-              <select id="ausCalendarioAsociado">
-                <option value="">Ninguno</option>
-                ${Object.entries(CALENDARIOS).map(([clave,info])=>`<option value="${clave}">${info.nombre}</option>`).join("")}
-              </select>
-            </div>
-          </div>
-          <div class="row hidden" id="ausDescansoRow" style="align-items:flex-end;">
-            <div class="field" style="max-width:150px;">
-              <label style="display:flex;align-items:center;gap:6px;">
-                <input type="checkbox" id="ausDescansoActivo" style="width:auto;">
-                Descanso
-              </label>
-            </div>
-            <div class="field" style="max-width:120px;">
-              <input type="number" id="ausDescansoMinutos" value="15" min="0" step="5" placeholder="min">
-            </div>
-          </div>
-          <div class="row hidden" id="ausNotaRow">
-            <div class="field">
-              <label>Descripción</label>
-              <input type="text" id="ausNota" placeholder="Ej: apoyo montaje almacén, grabación no calendarizada...">
-            </div>
-          </div>
+      <div class="row hidden" id="ausHorarioRow">
+        <div class="field">
+          <label>Horario</label>
+          <input type="text" id="ausHorario" placeholder="09:00–14:00 y 15:00–18:00">
         </div>
       </div>
-      <button class="btn btn-amber" id="btnAddAusencia">Guardar</button>
+      <div class="row hidden" id="ausLugarRow">
+        <div class="field">
+          <label>Lugar</label>
+          <input type="text" id="ausLugar" placeholder="Scope">
+        </div>
+        <div class="field">
+          <label>Sala</label>
+          <input type="text" id="ausSala" placeholder="Opcional">
+        </div>
+      </div>
+      <div class="row hidden" id="ausLugarRow2">
+        <div class="field">
+          <label>Calendario asociado</label>
+          <select id="ausCalendarioAsociado">
+            <option value="">Ninguno</option>
+            ${Object.entries(CALENDARIOS).map(([clave,info])=>`<option value="${clave}">${info.nombre}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div class="row hidden" id="ausDescansoRow" style="align-items:flex-end;">
+        <div class="field" style="max-width:150px;">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="ausDescansoActivo" style="width:auto;">
+            Descanso
+          </label>
+        </div>
+        <div class="field" style="max-width:120px;">
+          <input type="number" id="ausDescansoMinutos" value="15" min="0" step="5" placeholder="min">
+        </div>
+      </div>
+      <div class="field">
+        <label>Días (clic para marcar/quitar; mayús+clic para un rango)</label>
+        <div id="ausCalendarioPicker" class="mini-calendario"></div>
+      </div>
+      <div class="field">
+        <label>Días seleccionados</label>
+        <div id="ausFechasChips" style="display:flex;flex-wrap:wrap;gap:6px;min-height:34px;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;"></div>
+      </div>
+      <div class="row hidden" id="ausNotaRow">
+        <div class="field">
+          <label>Descripción</label>
+          <input type="text" id="ausNota" placeholder="Ej: apoyo montaje almacén, grabación no calendarizada...">
+        </div>
+      </div>
+      <button class="btn btn-amber" id="btnAddAusencia" style="width:100%;">Guardar</button>
     `;
     const tipoSelect = document.getElementById("ausTipo");
-    document.getElementById("ausTecnico").addEventListener("change", (e)=>{ ultimoTecnicoAusenciasForm = e.target.value; renderAusencias(); });
+    document.getElementById("ausTecnico").addEventListener("change", (e)=>{ ultimoTecnicoAusenciasForm = e.target.value; paginaEntradasAusencia = 0; renderAusencias(); });
     const horarioRow = document.getElementById("ausHorarioRow");
     const notaRow = document.getElementById("ausNotaRow");
     const horarioInput = document.getElementById("ausHorario");
@@ -3959,9 +3964,22 @@ function renderAusencias(){
   }
   const lista = Object.entries(STATE.ausencias[tid] || {}).sort((a,b)=> a[0].localeCompare(b[0]));
   const nombreTecListado = STATE.tecnicos[tid]?.nombre || tid;
+  const PORPAGINA = 8;
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / PORPAGINA));
+  if(paginaEntradasAusencia >= totalPaginas) paginaEntradasAusencia = totalPaginas - 1;
+  if(paginaEntradasAusencia < 0) paginaEntradasAusencia = 0;
+  const paginaActual = lista.slice(paginaEntradasAusencia*PORPAGINA, paginaEntradasAusencia*PORPAGINA + PORPAGINA);
+
   document.getElementById("ausenciasList").innerHTML = `
-    <h3 style="margin:0 0 10px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:14px;">Entradas de ${nombreTecListado}</h3>
-    ${lista.length ? lista.map(([fecha,datos])=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <h3 style="margin:0;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:14px;">Entradas de ${nombreTecListado}</h3>
+      ${lista.length>PORPAGINA ? `<div style="display:flex;align-items:center;gap:8px;">
+        <button class="btn btn-ghost" id="btnAusPaginaAnterior" ${paginaEntradasAusencia===0?"disabled":""}>‹</button>
+        <span class="muted" style="font-size:11.5px;white-space:nowrap;">${paginaEntradasAusencia+1} / ${totalPaginas}</span>
+        <button class="btn btn-ghost" id="btnAusPaginaSiguiente" ${paginaEntradasAusencia>=totalPaginas-1?"disabled":""}>›</button>
+      </div>` : ""}
+    </div>
+    ${paginaActual.length ? paginaActual.map(([fecha,datos])=>`
     <div class="event-row">
       <div class="event-fecha">${fecha}</div>
       <div style="flex:1;">
@@ -3975,6 +3993,11 @@ function renderAusencias(){
       ${isAdmin?`<button class="btn btn-ghost" data-editar-ausencia="${fecha}" title="Editar">✎</button><button class="btn btn-ghost" data-del-ausencia="${fecha}">Quitar</button>`:""}
     </div>
   `).join("") : `<p class="muted">Sin entradas registradas.</p>`}`;
+
+  const btnPagAnt = document.getElementById("btnAusPaginaAnterior");
+  const btnPagSig = document.getElementById("btnAusPaginaSiguiente");
+  if(btnPagAnt) btnPagAnt.addEventListener("click", ()=>{ paginaEntradasAusencia--; renderAusencias(); });
+  if(btnPagSig) btnPagSig.addEventListener("click", ()=>{ paginaEntradasAusencia++; renderAusencias(); });
 
   document.getElementById("ausenciasList").querySelectorAll("[data-del-ausencia]").forEach(btn=>{
     btn.addEventListener("click", ()=> removeAusencia(tid, btn.dataset.delAusencia));
