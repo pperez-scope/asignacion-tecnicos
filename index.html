@@ -874,6 +874,11 @@
           <p class="muted" id="arreglarTeletrabajoStatus"></p>
         </div>
         <div class="card">
+          <p class="muted" style="margin-top:0;">Las entradas de Teletrabajo con horario partido (formato antiguo, con descanso a mediodía fijo) se cambian a un horario continuo de 9:00 a 18:00 con 60 minutos de descanso, igual que el nuevo horario por defecto de Oficina Scope.</p>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarTeletrabajoPartido">Pasar Teletrabajo partido a 9–18 con descanso</button>
+          <p class="muted" id="arreglarTeletrabajoPartidoStatus"></p>
+        </div>
+        <div class="card">
           <p class="muted" style="margin-top:0;">Las libranzas compensatorias creadas antes de que la nota incluyera la fecha del día trabajado se quedaron con el texto genérico. Este botón busca a qué día corresponde cada una y actualiza la nota para incluirlo.</p>
           <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarLibranzas">Añadir fecha a las notas de libranza compensatoria</button>
           <p class="muted" id="arreglarLibranzasStatus"></p>
@@ -1742,6 +1747,29 @@ document.getElementById("btnArreglarTeletrabajo").addEventListener("click", asyn
   }
   await update(ref(db), updates);
   statusEl.textContent = `${corregidas} entrada${corregidas>1?"s":""} de Teletrabajo corregida${corregidas>1?"s":""} con el horario estándar de cada técnico.`;
+  toast(`${corregidas} entrada${corregidas>1?"s":""} corregida${corregidas>1?"s":""}`);
+});
+
+document.getElementById("btnArreglarTeletrabajoPartido").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("arreglarTeletrabajoPartidoStatus");
+  const updates = {};
+  let corregidas = 0;
+  Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
+    Object.entries(porFecha||{}).forEach(([fecha, datos])=>{
+      if(datos.tipo!=="teletrabajo" || !datos.horario) return;
+      const rangos = parseRangosMultiples(datos.horario);
+      if(rangos.length < 2) return; // no es un horario partido, no se toca
+      updates[`ausencias/${tid}/${fecha}/horario`] = "09:00–18:00";
+      updates[`ausencias/${tid}/${fecha}/descansoMinutos`] = 60;
+      corregidas++;
+    });
+  });
+  if(corregidas===0){
+    statusEl.textContent = "No había ninguna entrada de Teletrabajo con horario partido. Todo en orden.";
+    return;
+  }
+  await update(ref(db), updates);
+  statusEl.textContent = `${corregidas} entrada${corregidas>1?"s":""} de Teletrabajo cambiada${corregidas>1?"s":""} a 09:00–18:00 con 60 min de descanso.`;
   toast(`${corregidas} entrada${corregidas>1?"s":""} corregida${corregidas>1?"s":""}`);
 });
 
