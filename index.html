@@ -1623,13 +1623,18 @@ async function syncCalendarioIcs(claveCal, calInfo){
     if(inicioEvento < inicioVentana || inicioEvento > timeMax){ fueraDeVentana++; return; } // fuera de la ventana visible
     const idSeguro = `ics_${sanitizeFirebaseKey(ev.uid)}`;
     fetchedIds.add(idSeguro);
+    const anterior = STATE.eventos[idSeguro] || {};
     const eventoNuevo = {
       calendario: claveCal,
       calendarId: null, // de solo lectura: no hay escritura posible en Calendar
       summary: ev.summary || "(sin título)",
       start: ev.start,
       end: ev.end || ev.start,
-      description: ev.description || ""
+      description: ev.description || "",
+      modalidad: anterior.modalidad || "",
+      excluirInforme: !!anterior.excluirInforme,
+      excluirSinCubrir: !!anterior.excluirSinCubrir,
+      notaInterna: anterior.notaInterna || ""
     };
     const aviso = detectarCambioHorarioEvento(idSeguro, STATE.eventos[idSeguro], eventoNuevo);
     if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
@@ -1668,6 +1673,7 @@ async function syncCalendario(claveCal, calInfo){
     if(ev.attachments && ev.attachments.length) conAdjuntosBruto++;
     const adjuntos = (ev.attachments||[]).map(a=>({ titulo: a.title||"Documento", url: a.fileUrl||"" })).filter(a=>a.url);
     if(adjuntos.length) conAdjuntosValidos++;
+    const anterior = STATE.eventos[ev.id] || {};
     const eventoNuevo = {
       calendario: claveCal,
       calendarId: calInfo.calendarId,
@@ -1676,7 +1682,11 @@ async function syncCalendario(claveCal, calInfo){
       start: ev.start?.dateTime || ev.start?.date,
       end: ev.end?.dateTime || ev.end?.date,
       description: ev.description || "",
-      adjuntos
+      adjuntos,
+      modalidad: anterior.modalidad || "",
+      excluirInforme: !!anterior.excluirInforme,
+      excluirSinCubrir: !!anterior.excluirSinCubrir,
+      notaInterna: anterior.notaInterna || ""
     };
     const aviso = detectarCambioHorarioEvento(ev.id, STATE.eventos[ev.id], eventoNuevo);
     if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
