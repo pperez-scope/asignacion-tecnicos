@@ -152,9 +152,12 @@
     font-size:11px;
     font-weight:700;
     line-height:1;
-    padding:3px 6px;
+    padding:4px 8px;
     border-radius:999px;
     flex-shrink:0;
+    display:inline-flex;
+    align-items:center;
+    gap:3px;
   }
 
   main{padding:16px;max-width:1300px;margin:0 auto;width:100%;box-sizing:border-box;}
@@ -2135,7 +2138,7 @@ function renderBannerLibranzas(){
     return;
   }
   badge.classList.remove("hidden");
-  badge.textContent = pendientes.length;
+  badge.innerHTML = `⚠️ ${pendientes.length}`;
   badge.title = `${pendientes.length} libranza${pendientes.length>1?"s":""} compensatoria${pendientes.length>1?"s":""} pendiente${pendientes.length>1?"s":""} de asignar`;
 }
 
