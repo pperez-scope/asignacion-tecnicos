@@ -1068,6 +1068,7 @@ const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–18:00" };
 // Si un calendario nuevo no está en esta lista, se le asigna un color automático (colorFor) como hasta ahora.
 const COLOR_CALENDARIO_POR_NOMBRE = {
   "producción scope": "#7B4B2A",
+  "produccionscp": "#7B4B2A",
   "fundación juan march": "#8E5F8E",
   "ateneo": "#2CA6A4",
   "formación": "#E8709A"
@@ -2670,10 +2671,11 @@ function renderAsignarDetalle(eventId){
     <div style="margin:6px 0 10px;">
       ${evento.adjuntos.map(a=>`<a href="${a.url}" target="_blank" rel="noopener" class="btn btn-teal" style="text-decoration:none;margin:2px 6px 2px 0;display:inline-block;">📎 ${a.titulo}</a>`).join("")}
     </div>` : ""}
+    ${isAdmin ? `
     <div class="row row-compact">
       <div class="field" style="max-width:220px;">
         <label>Modalidad</label>
-        <select id="eventoModalidad" ${isAdmin?"":"disabled"}>
+        <select id="eventoModalidad">
           <option value="" ${!evento.modalidad?"selected":""}>Sin especificar</option>
           <option value="presencial" ${evento.modalidad==="presencial"?"selected":""}>Presencial</option>
           <option value="online" ${evento.modalidad==="online"?"selected":""}>Online</option>
@@ -2681,14 +2683,17 @@ function renderAsignarDetalle(eventId){
       </div>
     </div>
     <label style="display:flex;align-items:center;gap:6px;margin:2px 0 12px;">
-      <input type="checkbox" id="eventoExcluirInforme" style="width:auto;" ${evento.excluirInforme?"checked":""} ${isAdmin?"":"disabled"}>
+      <input type="checkbox" id="eventoExcluirInforme" style="width:auto;" ${evento.excluirInforme?"checked":""}>
       No computar como servicio en el informe de este calendario
     </label>
     <label style="display:flex;align-items:center;gap:6px;margin:2px 0 12px;">
-      <input type="checkbox" id="eventoExcluirSinCubrir" style="width:auto;" ${evento.excluirSinCubrir?"checked":""} ${isAdmin?"":"disabled"}>
+      <input type="checkbox" id="eventoExcluirSinCubrir" style="width:auto;" ${evento.excluirSinCubrir?"checked":""}>
       Es una nota/aviso del calendario, no un servicio a cubrir (no mostrar en "Sin cubrir")
     </label>
-    ${isAdmin?`<button class="btn btn-ghost" id="btnGuardarModalidad" style="margin:-6px 0 12px;">Guardar modalidad / informe</button>`:""}
+    <button class="btn btn-ghost" id="btnGuardarModalidad" style="margin:-6px 0 12px;">Guardar modalidad / informe</button>
+    ` : (evento.modalidad ? `
+    <p class="muted" style="margin:0 0 12px;">${evento.modalidad==="online"?"💻 Online":"🏢 Presencial"}</p>
+    ` : "")}
     <div class="field">
       <label>Descripción del evento</label>
       <textarea id="notaEvento" rows="2" placeholder="Notas internas: material especial, punto de encuentro, contacto in situ…" ${isAdmin?"":"disabled"}>${notaActual}</textarea>
