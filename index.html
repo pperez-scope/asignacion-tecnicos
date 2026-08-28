@@ -453,6 +453,17 @@
     .ausencias-col-form{flex:1 1 auto;width:100%;}
     .ausencias-col-lista{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:14px;width:100%;}
   }
+  .two-col-layout{display:flex;gap:18px;align-items:flex-start;}
+  .two-col-layout-col{flex:1;min-width:280px;}
+  .two-col-layout-col .card:first-of-type{margin-top:0;}
+  .admin-col-title{
+    margin:0 0 10px;color:var(--ink-soft);font-family:var(--font-display);
+    text-transform:uppercase;letter-spacing:.04em;font-size:12px;
+  }
+  @media (max-width:760px){
+    .two-col-layout{flex-direction:column;}
+    .two-col-layout-col{width:100%;}
+  }
   .day-cell.tiene-evento{background:#FDFCFA;border-color:var(--amber);}
   .day-cell.ausencia-libranza{background:#E4F2E6;}
   .day-cell.ausencia-permiso{background:#E2F4F1;}
@@ -845,65 +856,73 @@
 
   <!-- ADMIN -->
   <section id="view-admin" class="hidden">
-    <div class="card">
-      <p class="muted" style="margin-top:0;">Sincroniza los eventos de los calendarios de cliente con la app. Hazlo cada vez que abras la app para gestionar asignaciones.</p>
-      <button class="btn btn-teal" id="btnSync">Sincronizar eventos de Calendar</button>
-      <p class="muted" id="syncStatus" style="white-space:pre-line;"></p>
-    </div>
-    <div class="card">
-      <p class="muted" style="margin-top:0;">Carga inicial de la lista de técnicos (solo hace falta una vez).</p>
-      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
-    </div>
-    <div class="card">
-      <p class="muted" style="margin-top:0;">Las entradas de Teletrabajo guardadas antes de que el horario se rellenara solo no cuentan horas. Este botón les añade el horario estándar del técnico correspondiente (respetando jornadas reducidas) a todas las que estén vacías, de una vez.</p>
-      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarTeletrabajo">Rellenar horario en Teletrabajo sin horario</button>
-      <p class="muted" id="arreglarTeletrabajoStatus"></p>
-    </div>
-    <div class="card">
-      <p class="muted" style="margin-top:0;">Las libranzas compensatorias creadas antes de que la nota incluyera la fecha del día trabajado se quedaron con el texto genérico. Este botón busca a qué día corresponde cada una y actualiza la nota para incluirlo.</p>
-      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarLibranzas">Añadir fecha a las notas de libranza compensatoria</button>
-      <p class="muted" id="arreglarLibranzasStatus"></p>
-    </div>
-    <div class="card">
-      <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Calendarios</h3>
-      <p class="muted" style="margin-top:0;">Añade aquí un nuevo calendario de Google (el ID lo encuentras en Google Calendar → los tres puntos junto al calendario → Configuración y uso compartido → Integrar calendario).</p>
-      <div class="row row-compact">
-        <div class="field">
-          <label>Nombre a mostrar</label>
-          <input type="text" id="nuevoCalNombre" placeholder="Ej: Teatro Circo Price">
+    <div class="two-col-layout">
+      <div class="two-col-layout-col">
+        <h3 class="admin-col-title">Sincronización y mantenimiento</h3>
+        <div class="card">
+          <p class="muted" style="margin-top:0;">Sincroniza los eventos de los calendarios de cliente con la app. Hazlo cada vez que abras la app para gestionar asignaciones.</p>
+          <button class="btn btn-teal" id="btnSync">Sincronizar eventos de Calendar</button>
+          <p class="muted" id="syncStatus" style="white-space:pre-line;"></p>
         </div>
-        <div class="field">
-          <label>ID de calendario de Google</label>
-          <input type="text" id="nuevoCalId" placeholder="abc123@group.calendar.google.com">
+        <div class="card">
+          <p class="muted" style="margin-top:0;">Carga inicial de la lista de técnicos (solo hace falta una vez).</p>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
+        </div>
+        <div class="card">
+          <p class="muted" style="margin-top:0;">Las entradas de Teletrabajo guardadas antes de que el horario se rellenara solo no cuentan horas. Este botón les añade el horario estándar del técnico correspondiente (respetando jornadas reducidas) a todas las que estén vacías, de una vez.</p>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarTeletrabajo">Rellenar horario en Teletrabajo sin horario</button>
+          <p class="muted" id="arreglarTeletrabajoStatus"></p>
+        </div>
+        <div class="card">
+          <p class="muted" style="margin-top:0;">Las libranzas compensatorias creadas antes de que la nota incluyera la fecha del día trabajado se quedaron con el texto genérico. Este botón busca a qué día corresponde cada una y actualiza la nota para incluirlo.</p>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarLibranzas">Añadir fecha a las notas de libranza compensatoria</button>
+          <p class="muted" id="arreglarLibranzasStatus"></p>
         </div>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-        <input type="checkbox" id="nuevoCalSoloLectura" style="width:auto;">
-        Es de solo lectura (calendario importado por suscripción, sin permiso para escribir)
-      </label>
-      <button class="btn btn-amber" id="btnAnadirCalendario">Añadir calendario</button>
-      <p class="muted" id="calendarioStatus"></p>
-      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
-      <div id="calendariosList"></div>
-      <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);margin-top:10px;" id="btnSeedCalendarios">Cargar calendarios iniciales (Juan March, Ateneo, Producción Scope)</button>
-    </div>
-    <div class="card">
-      <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Publicación de semanas para técnicos</h3>
-      <p class="muted" style="margin-top:0;">Los técnicos solo ven, en su vista de solo lectura, las semanas pasadas, la actual y la siguiente. A partir del sábado se desbloquea una semana más automáticamente. Aquí puedes publicar alguna semana extra antes de tiempo si hace falta.</p>
-      <div id="publicacionSemanasList"></div>
-    </div>
-    <div class="card">
-      <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Informes de servicios</h3>
-      <p class="muted" style="margin-top:0;">Genera un Excel con un formato parecido al que usas ahora a mano, a partir de los eventos y asignaciones ya cargados en la app.</p>
-      <p class="muted">El informe solo puede incluir los meses que ya se han sincronizado con Google Calendar (normalmente, de hoy en adelante). Los meses pasados no aparecerán a menos que se hayan sincronizado antes.</p>
-      <div class="row row-compact">
-        <div class="field" style="max-width:280px;">
-          <label>Calendario</label>
-          <select id="informeCalendarioSelect"></select>
+      <div class="two-col-layout-col">
+        <h3 class="admin-col-title">Configuración e informes</h3>
+        <div class="card">
+          <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Calendarios</h3>
+          <p class="muted" style="margin-top:0;">Añade aquí un nuevo calendario de Google (el ID lo encuentras en Google Calendar → los tres puntos junto al calendario → Configuración y uso compartido → Integrar calendario).</p>
+          <div class="row row-compact">
+            <div class="field">
+              <label>Nombre a mostrar</label>
+              <input type="text" id="nuevoCalNombre" placeholder="Ej: Teatro Circo Price">
+            </div>
+            <div class="field">
+              <label>ID de calendario de Google</label>
+              <input type="text" id="nuevoCalId" placeholder="abc123@group.calendar.google.com">
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+            <input type="checkbox" id="nuevoCalSoloLectura" style="width:auto;">
+            Es de solo lectura (calendario importado por suscripción, sin permiso para escribir)
+          </label>
+          <button class="btn btn-amber" id="btnAnadirCalendario">Añadir calendario</button>
+          <p class="muted" id="calendarioStatus"></p>
+          <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+          <div id="calendariosList"></div>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);margin-top:10px;" id="btnSeedCalendarios">Cargar calendarios iniciales (Juan March, Ateneo, Producción Scope)</button>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Publicación de semanas para técnicos</h3>
+          <p class="muted" style="margin-top:0;">Los técnicos solo ven, en su vista de solo lectura, las semanas pasadas, la actual y la siguiente. A partir del sábado se desbloquea una semana más automáticamente. Aquí puedes publicar alguna semana extra antes de tiempo si hace falta.</p>
+          <div id="publicacionSemanasList"></div>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Informes de servicios</h3>
+          <p class="muted" style="margin-top:0;">Genera un Excel con un formato parecido al que usas ahora a mano, a partir de los eventos y asignaciones ya cargados en la app.</p>
+          <p class="muted">El informe solo puede incluir los meses que ya se han sincronizado con Google Calendar (normalmente, de hoy en adelante). Los meses pasados no aparecerán a menos que se hayan sincronizado antes.</p>
+          <div class="row row-compact">
+            <div class="field" style="max-width:280px;">
+              <label>Calendario</label>
+              <select id="informeCalendarioSelect"></select>
+            </div>
+          </div>
+          <button class="btn btn-amber" id="btnDescargarInforme">Descargar informe</button>
+          <p class="muted" id="informeStatus"></p>
         </div>
       </div>
-      <button class="btn btn-amber" id="btnDescargarInforme">Descargar informe</button>
-      <p class="muted" id="informeStatus"></p>
     </div>
   </section>
 
