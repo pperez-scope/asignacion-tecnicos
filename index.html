@@ -757,7 +757,7 @@
     </div>
     <nav class="tabs" id="tabs">
       <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn"><span class="tab-icon">📋</span><span>Sin cubrir</span></button>
-      <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span></button>
+      <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span><span class="tab-badge hidden" id="badgeCambiosEventos"></span></button>
       <button data-tab="tecnico"><span class="tab-icon">👤</span><span>Vista técnico</span></button>
       <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span></button>
       <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span><span class="tab-badge hidden" id="badgeLibranzas"></span></button>
@@ -780,6 +780,10 @@
 
   <!-- ASIGNACIONES -->
   <section id="view-asignar" class="hidden">
+    <div class="card hidden" id="avisosCambiosCard">
+      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">⚠️ Eventos asignados modificados en Calendar</h3>
+      <div id="avisosCambiosList"></div>
+    </div>
     <div class="card" id="asignarWeek"></div>
     <div class="modal-overlay hidden" id="asignarDetalleCard">
       <div class="modal-box">
@@ -944,7 +948,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
-  getDatabase, ref, onValue, set, update, remove, get
+  getDatabase, ref, onValue, set, update, remove, get, push
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
 /* ---------- CONFIG ---------- */
@@ -1114,7 +1118,7 @@ let currentUser = null;
 let accessToken = null;
 let isAdmin = false;
 
-let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{} };
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{} };
 
 /* ---------- HELPERS ---------- */
 function slugify(str){
@@ -1433,6 +1437,7 @@ onValue(ref(db,"eventos"), (snap)=>{ STATE.eventos = snap.val() || {}; render();
 onValue(ref(db,"asignaciones"), (snap)=>{ STATE.asignaciones = snap.val() || {}; render(); });
 onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; render(); });
 onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
+onValue(ref(db,"avisosCambios"), (snap)=>{ STATE.avisosCambios = snap.val() || {}; render(); });
 onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; render(); });
 
 /* ---------- TABS ---------- */
@@ -1556,6 +1561,37 @@ async function fetchTextoIcs(url){
 function sanitizeFirebaseKey(str){
   return str.replace(/[.#$\[\]\/]/g, "_");
 }
+/* Si un evento que ya tiene técnicos asignados cambia de horario/fecha entre una sincronización
+   y la siguiente, genera un aviso para que el admin lo revise (puede que ya no encaje con la
+   disponibilidad de los técnicos asignados). Devuelve null si no hay nada que avisar. */
+function detectarCambioHorarioEvento(id, eventoAntiguo, eventoNuevo){
+  const asign = STATE.asignaciones[id];
+  if(!eventoAntiguo || !asign || Object.keys(asign).length===0) return null;
+  if(eventoAntiguo.start === eventoNuevo.start && eventoAntiguo.end === eventoNuevo.end) return null;
+  const tecnicos = Object.keys(asign).map(tid=> STATE.tecnicos[tid]?.nombre).filter(Boolean);
+  return {
+    eventId: id, tipo:"horario",
+    resumen: eventoNuevo.summary || eventoAntiguo.summary || "(sin título)",
+    calendario: eventoAntiguo.calendario,
+    fechaAntigua: eventoAntiguo.start, fechaNueva: eventoNuevo.start,
+    tecnicos, creado: Date.now()
+  };
+}
+/* Igual que la anterior, pero para cuando el evento ha desaparecido del todo del calendario
+   (borrado o cancelado) y todavía tenía técnicos asignados. */
+function detectarEventoEliminado(id, eventoAntiguo){
+  const asign = STATE.asignaciones[id];
+  if(!eventoAntiguo || !asign || Object.keys(asign).length===0) return null;
+  const tecnicos = Object.keys(asign).map(tid=> STATE.tecnicos[tid]?.nombre).filter(Boolean);
+  return {
+    eventId: id, tipo:"eliminado",
+    resumen: eventoAntiguo.summary || "(sin título)",
+    calendario: eventoAntiguo.calendario,
+    fechaAntigua: eventoAntiguo.start, fechaNueva: null,
+    tecnicos, creado: Date.now()
+  };
+}
+
 async function syncCalendarioIcs(claveCal, calInfo){
   const inicioVentana = new Date();
   inicioVentana.setHours(0,0,0,0);
@@ -1574,7 +1610,7 @@ async function syncCalendarioIcs(claveCal, calInfo){
     if(inicioEvento < inicioVentana || inicioEvento > timeMax){ fueraDeVentana++; return; } // fuera de la ventana visible
     const idSeguro = `ics_${sanitizeFirebaseKey(ev.uid)}`;
     fetchedIds.add(idSeguro);
-    updates[`eventos/${idSeguro}`] = {
+    const eventoNuevo = {
       calendario: claveCal,
       calendarId: null, // de solo lectura: no hay escritura posible en Calendar
       summary: ev.summary || "(sin título)",
@@ -1582,12 +1618,17 @@ async function syncCalendarioIcs(claveCal, calInfo){
       end: ev.end || ev.start,
       description: ev.description || ""
     };
+    const aviso = detectarCambioHorarioEvento(idSeguro, STATE.eventos[idSeguro], eventoNuevo);
+    if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
+    updates[`eventos/${idSeguro}`] = eventoNuevo;
   });
   let borrados = 0;
   Object.entries(STATE.eventos).forEach(([id, ev])=>{
     if(ev.calendario !== claveCal) return;
     const inicioEvento = new Date(ev.start);
     if(inicioEvento >= inicioVentana && inicioEvento <= timeMax && !fetchedIds.has(id)){
+      const aviso = detectarEventoEliminado(id, ev);
+      if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
       updates[`eventos/${id}`] = null;
       updates[`asignaciones/${id}`] = null;
       borrados++;
@@ -1614,7 +1655,7 @@ async function syncCalendario(claveCal, calInfo){
     if(ev.attachments && ev.attachments.length) conAdjuntosBruto++;
     const adjuntos = (ev.attachments||[]).map(a=>({ titulo: a.title||"Documento", url: a.fileUrl||"" })).filter(a=>a.url);
     if(adjuntos.length) conAdjuntosValidos++;
-    updates[`eventos/${ev.id}`] = {
+    const eventoNuevo = {
       calendario: claveCal,
       calendarId: calInfo.calendarId,
       soloLectura: !!calInfo.soloLectura,
@@ -1624,6 +1665,9 @@ async function syncCalendario(claveCal, calInfo){
       description: ev.description || "",
       adjuntos
     };
+    const aviso = detectarCambioHorarioEvento(ev.id, STATE.eventos[ev.id], eventoNuevo);
+    if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
+    updates[`eventos/${ev.id}`] = eventoNuevo;
   });
   // Detectar eventos que ya no existen en Calendar dentro de esta misma ventana de fechas
   // (borrados o cancelados) y quitarlos también de la app, junto con sus asignaciones.
@@ -1634,6 +1678,8 @@ async function syncCalendario(claveCal, calInfo){
     if(ev.calendario !== claveCal) return;
     const inicioEvento = new Date(ev.start);
     if(inicioEvento >= inicioVentana && inicioEvento <= new Date(timeMax) && !fetchedIds.has(id)){
+      const aviso = detectarEventoEliminado(id, ev);
+      if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
       updates[`eventos/${id}`] = null;
       updates[`asignaciones/${id}`] = null;
       borrados++;
@@ -2213,8 +2259,65 @@ function renderBannerLibranzas(){
   badge.title = `${pendientes.length} libranza${pendientes.length>1?"s":""} compensatoria${pendientes.length>1?"s":""} pendiente${pendientes.length>1?"s":""} de asignar`;
 }
 
+function renderAvisosCambios(){
+  const badge = document.getElementById("badgeCambiosEventos");
+  const card = document.getElementById("avisosCambiosCard");
+  const lista = document.getElementById("avisosCambiosList");
+  const avisos = Object.entries(STATE.avisosCambios || {}).sort((a,b)=> (b[1].creado||0)-(a[1].creado||0));
+
+  if(badge){
+    if(!isAdmin || avisos.length===0){
+      badge.classList.add("hidden");
+      badge.textContent = "";
+    } else {
+      badge.classList.remove("hidden");
+      badge.innerHTML = `⚠️ ${avisos.length}`;
+      badge.title = `${avisos.length} evento${avisos.length>1?"s":""} asignado${avisos.length>1?"s":""} modificado${avisos.length>1?"s":""} en Calendar`;
+    }
+  }
+  if(!card || !lista) return;
+  if(!isAdmin || avisos.length===0){
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  lista.innerHTML = avisos.map(([id, av])=>{
+    const tecnicosTxt = av.tecnicos && av.tecnicos.length ? av.tecnicos.join(", ") : "sin técnicos con nombre";
+    const detalle = av.tipo==="eliminado"
+      ? `Se ha borrado o cancelado en Calendar. Estaba el ${fmtFecha(av.fechaAntigua)} a las ${fmtHora(av.fechaAntigua)}.`
+      : `Ha cambiado de ${fmtFecha(av.fechaAntigua)} ${fmtHora(av.fechaAntigua)} a ${fmtFecha(av.fechaNueva)} ${fmtHora(av.fechaNueva)}.`;
+    return `<div class="event-row">
+      <div class="event-fecha">${av.tipo==="eliminado"?"🗑️":"🔄"}</div>
+      <div style="flex:1;">
+        <strong>${av.resumen}</strong> · ${CALENDARIOS[av.calendario]?.nombre || av.calendario}<br>
+        <span class="muted">${detalle} Asignado a: ${tecnicosTxt}.</span>
+      </div>
+      ${av.tipo!=="eliminado" && STATE.eventos[av.eventId] ? `<button class="btn btn-teal" data-ver-aviso="${id}">Ver evento</button>` : ""}
+      <button class="btn btn-ghost" data-descartar-aviso="${id}">Descartar</button>
+    </div>`;
+  }).join("");
+
+  lista.querySelectorAll("[data-descartar-aviso]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      await remove(ref(db, `avisosCambios/${btn.dataset.descartarAviso}`));
+    });
+  });
+  lista.querySelectorAll("[data-ver-aviso]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const av = STATE.avisosCambios[btn.dataset.verAviso];
+      const ev = STATE.eventos[av.eventId];
+      if(!ev) return;
+      eventoSeleccionado = av.eventId; editandoTecnicoId = null;
+      weekState.asignar = startOfWeek(new Date(ev.start));
+      mesAsignacionesActual = new Date(new Date(ev.start).getFullYear(), new Date(ev.start).getMonth(), 1);
+      render();
+    });
+  });
+}
+
 function render(){
   renderBannerLibranzas();
+  renderAvisosCambios();
   const activeTab = document.querySelector("nav.tabs button.active")?.dataset.tab;
   if(!activeTab) return;
   if(activeTab==="sincubrir") renderSinCubrir();
