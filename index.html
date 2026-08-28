@@ -1692,8 +1692,8 @@ document.getElementById("btnArreglarLibranzas").addEventListener("click", async 
   Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
     Object.entries(porFecha||{}).forEach(([fechaLibranza, datos])=>{
       if(datos.tipo!=="libranza") return;
-      const yaTieneFecha = datos.nota && /\([^()]+\)\s*$/.test(datos.nota);
-      if(yaTieneFecha) return;
+      const esAutoOVacia = !datos.nota || datos.nota==="Compensa trabajo en fin de semana/festivo";
+      if(!esAutoOVacia) return; // ya tiene una nota propia (escrita a mano, o ya con fecha): no tocar
       let eventIdEncontrado = null;
       for(const [eventId, porTecnico] of Object.entries(STATE.asignaciones)){
         if(porTecnico?.[tid]?.libranzaCompensatoria === fechaLibranza){
@@ -3441,6 +3441,9 @@ function renderEditorDiaTecnico(){
     descansoRow.classList.toggle("hidden", !necesitaHorario);
     tipoAsigRow.classList.toggle("hidden", !necesitaLugar);
     notaRow.classList.toggle("hidden", false); // la nota está disponible para cualquier categoría (útil para anotar a qué día compensa una libranza, por ejemplo)
+    document.getElementById("editorDiaNota").placeholder = tipo==="libranza"
+      ? "Ej: Compensación por exceso de horas en la jornada del 12/08"
+      : "Ej: apoyo montaje almacén…";
     if((tipo==="oficina"||tipo==="teletrabajo") && !horarioInput.value) horarioInput.value = horarioOficinaDefecto(nombreTecnico);
     if(tipo==="oficina" && !document.getElementById("editorDiaLugar").value) document.getElementById("editorDiaLugar").value = "Scope";
     if(necesitaHorario) evaluarDescansoAuto();
@@ -3798,6 +3801,9 @@ function renderAusencias(){
       tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
       lugarRow.classList.toggle("hidden", !necesitaLugar);
       notaRow.classList.toggle("hidden", false); // la nota está disponible para cualquier categoría (útil para anotar a qué día compensa una libranza, por ejemplo)
+      document.getElementById("ausNota").placeholder = tipo==="libranza"
+        ? "Ej: Compensación por exceso de horas en la jornada del 12/08"
+        : "Ej: apoyo montaje almacén, grabación no calendarizada...";
       if((tipo==="oficina"||tipo==="teletrabajo") && !horarioInput.value){
         const nombreTecSel = STATE.tecnicos[document.getElementById("ausTecnico").value]?.nombre || "";
         horarioInput.value = horarioOficinaDefecto(nombreTecSel);
