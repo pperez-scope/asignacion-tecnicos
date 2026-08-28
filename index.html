@@ -183,6 +183,17 @@
     .tab-badge{position:absolute;top:4px;right:4px;margin-left:0;}
     .auth-box{border-top:none;flex-direction:row;align-items:center;padding:6px 10px;width:auto;}
   }
+  @media (max-width:600px){
+    .sidebar{flex-direction:column;align-items:stretch;}
+    .brand{padding:8px 12px;justify-content:center;}
+    nav.tabs{
+      flex-direction:row;flex-wrap:wrap;overflow-x:visible;
+      justify-content:center;padding:4px 6px;
+    }
+    nav.tabs button{flex:0 0 auto;padding:8px 10px;}
+    nav.tabs button.active{background:rgba(0,0,0,.06);border-bottom-color:var(--amber);}
+    .auth-box{border-top:1px solid rgba(255,255,255,.15);justify-content:center;}
+  }
   .card{
     background:var(--surface);
     border:1px solid var(--line);
@@ -301,6 +312,11 @@
     font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
     color:var(--danger);background:#FDE7E1;
     padding:1px 5px;border-radius:999px;
+  }
+  @media (max-width:600px){
+    .week-grid{grid-template-columns:1fr;gap:10px;overflow-x:visible;}
+    .week-day-col{min-height:0;}
+    .week-day-body{min-height:32px;}
   }
 
   .field{margin-bottom:12px;}
@@ -435,6 +451,26 @@
   .mini-calendario .week-nav{margin-bottom:6px;}
   .mini-calendario .week-nav .btn{padding:4px 8px;font-size:11px;}
   .mini-calendario .week-range{font-size:12px;}
+  .tecnico-week-grid{grid-template-columns:repeat(7,1fr);}
+  .tecnico-mes-grid{grid-template-columns:repeat(7,1fr) 84px;}
+  @media (max-width:600px){
+    /* Mes (Calendarios y Vista técnico): en vez de comprimir hasta ser ilegible, columnas de
+       ancho mínimo legible con scroll horizontal — el mismo patrón que ya funciona en Cuadrante. */
+    .month-grid-eventos{
+      grid-template-columns:repeat(7,68px);
+      overflow-x:auto;
+      padding-bottom:4px;
+    }
+    .tecnico-mes-grid{
+      grid-template-columns:repeat(7,68px) 60px;
+      overflow-x:auto;
+      padding-bottom:4px;
+    }
+    .month-grid-eventos .day-cell, .tecnico-mes-grid .day-cell{min-height:80px;font-size:10.5px;}
+    .month-grid-eventos .weekday-label, .tecnico-mes-grid .weekday-label{font-size:10px;}
+    /* Semana de Vista técnico: se apila en columna (una fila por día) en vez de 7 columnas */
+    .tecnico-week-grid{grid-template-columns:1fr;gap:8px;}
+  }
 
   /* Otras asignaciones: todo más agrupado y compacto */
   #view-ausencias .card{padding:14px 16px;margin-bottom:10px;}
@@ -2452,7 +2488,7 @@ function renderAsignarMes(mesValue){
         ${segmentoVistaAsignarHTML()}
       </div>
       <button class="btn btn-ghost" data-mes-asignar-nav="1">Mes siguiente ›</button>
-    </div><div class="month-grid">`;
+    </div><div class="month-grid month-grid-eventos">`;
   ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
   for(let i=0;i<primerDiaSemana;i++) html += `<div></div>`;
 
@@ -3314,7 +3350,7 @@ function renderTecnicoSemana(tecnicoId, grid){
       <button class="btn btn-ghost" data-tec-week-nav="-1">‹ Semana anterior</button>
       <div class="week-range">${fmtWeekRange(weekStart)}</div>
       <button class="btn btn-ghost" data-tec-week-nav="1">Semana siguiente ›</button>
-    </div><div class="month-grid" style="grid-template-columns:repeat(7,1fr);">`;
+    </div><div class="month-grid tecnico-week-grid">`;
   ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
   dias.forEach(d=>{
     const fechaIso = isoDate(d);
@@ -3364,14 +3400,14 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
   if(semanaActual.length){ while(semanaActual.length<7) semanaActual.push(null); semanas.push(semanaActual); }
 
   let totalMes = 0;
-  let html = `<div class="month-grid" style="grid-template-columns:repeat(7,1fr) 84px;margin-bottom:4px;">`;
+  let html = `<div class="month-grid tecnico-mes-grid" style="margin-bottom:4px;">`;
   ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
   html += `<div class="weekday-label">Total</div></div>`;
 
   semanas.forEach(semana=>{
     let totalSemana = 0;
     let primerDiaReal = null, ultimoDiaReal = null;
-    html += `<div class="month-grid" style="grid-template-columns:repeat(7,1fr) 84px;margin-bottom:4px;">`;
+    html += `<div class="month-grid tecnico-mes-grid" style="margin-bottom:4px;">`;
     semana.forEach(day=>{
       if(day===null){ html += `<div></div>`; return; }
       const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
