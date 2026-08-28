@@ -191,9 +191,14 @@
     nav.tabs button.active{background:rgba(0,0,0,.06);border-bottom-color:var(--amber);}
     .auth-box{display:contents;}
     .auth-box > *{flex:0 0 auto;}
-    .segmented{width:100%;}
-    .segmented button{flex:1;padding:8px 4px;font-size:11.5px;}
+    .auth-box .btn{padding:6px 10px;font-size:12px;}
+    .texto-largo{display:none;}
+    .texto-corto{display:inline;}
+    .row > .field{flex:1 1 100%;min-width:0;}
+    #tecnicoModoSwitch, #asignacionesModoSwitch{width:100%;}
+    #tecnicoModoSwitch button, #asignacionesModoSwitch button{flex:1;padding:8px 2px;font-size:11px;}
   }
+  .texto-corto{display:none;}
   .card{
     background:var(--surface);
     border:1px solid var(--line);
@@ -1473,7 +1478,7 @@ function renderAuthBox(){
     box.innerHTML = `<span class="muted" style="color:#C7CFD8;">Sin permiso de edición</span>
       <button class="btn btn-outline" id="btnLogout">Salir</button>`;
   } else {
-    box.innerHTML = `<button class="btn btn-amber" id="btnLogin">Entrar como admin</button>`;
+    box.innerHTML = `<button class="btn btn-amber" id="btnLogin"><span class="texto-largo">Entrar como admin</span><span class="texto-corto">Admin</span></button>`;
   }
 }
 
