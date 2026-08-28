@@ -713,7 +713,6 @@
 
   <!-- SIN CUBRIR -->
   <section id="view-sincubrir">
-    <h2 class="section-title">Eventos sin cubrir</h2>
     <div class="card" id="sincubrirList">
       <div class="empty-state"><span class="eyebrow">Sin datos aún</span><p>Sincroniza el calendario desde la pestaña Admin.</p></div>
     </div>
@@ -721,7 +720,6 @@
 
   <!-- ASIGNACIONES -->
   <section id="view-asignar" class="hidden">
-    <h2 class="section-title">Calendarios</h2>
     <div class="card">
       <div class="row" style="align-items:flex-end;">
         <div class="field">
@@ -751,7 +749,6 @@
 
   <!-- VISTA TÉCNICO -->
   <section id="view-tecnico" class="hidden">
-    <h2 class="section-title">Vista por técnico</h2>
     <div class="card">
       <div class="row">
         <div class="field">
@@ -786,7 +783,6 @@
 
   <!-- CUADRANTE -->
   <section id="view-general" class="hidden">
-    <h2 class="section-title">Cuadrante</h2>
     <div class="card">
       <div class="row" style="align-items:center;">
         <p class="muted" style="margin:0;flex:1;">Muestra 4 semanas por defecto (la anterior, la actual y las dos siguientes). Desliza en horizontal para ver más semanas atrás o adelante.</p>
@@ -803,7 +799,6 @@
 
   <!-- AUSENCIAS -->
   <section id="view-ausencias" class="hidden">
-    <h2 class="section-title">Otras asignaciones</h2>
     <div class="card hidden" id="libranzasPendientesCard">
       <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Libranzas compensatorias pendientes</h3>
       <div id="libranzasPendientesList"></div>
@@ -822,7 +817,6 @@
 
   <!-- ADMIN -->
   <section id="view-admin" class="hidden">
-    <h2 class="section-title">Administración</h2>
     <div class="card">
       <p class="muted" style="margin-top:0;">Sincroniza los eventos de los calendarios de cliente con la app. Hazlo cada vez que abras la app para gestionar asignaciones.</p>
       <button class="btn btn-teal" id="btnSync">Sincronizar eventos de Calendar</button>
@@ -1957,8 +1951,8 @@ async function guardarNotaEvento(eventId, texto){
   await update(ref(db, `eventos/${eventId}`), { notaInterna: texto||"" });
   toast("Descripción guardada");
 }
-async function guardarModalidadEvento(eventId, modalidad, excluirInforme){
-  await update(ref(db, `eventos/${eventId}`), { modalidad: modalidad||"", excluirInforme: !!excluirInforme });
+async function guardarModalidadEvento(eventId, modalidad, excluirInforme, excluirSinCubrir){
+  await update(ref(db, `eventos/${eventId}`), { modalidad: modalidad||"", excluirInforme: !!excluirInforme, excluirSinCubrir: !!excluirSinCubrir });
   toast("Guardado");
 }
 async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala, libranzaCompensatoria){
@@ -2146,8 +2140,9 @@ window.addEventListener("resize", ()=>{
 
 function renderSinCubrir(){
   const cont = document.getElementById("sincubrirList");
+  const hoyIso = isoDate(new Date());
   const eventos = Object.entries(STATE.eventos)
-    .filter(([id])=> !STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0)
+    .filter(([id,ev])=> (!STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0) && !ev.excluirSinCubrir && ev.start.slice(0,10) >= hoyIso)
     .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
 
   if(eventos.length===0){
@@ -2494,6 +2489,10 @@ function renderAsignarDetalle(eventId){
       <input type="checkbox" id="eventoExcluirInforme" style="width:auto;" ${evento.excluirInforme?"checked":""} ${isAdmin?"":"disabled"}>
       No computar como servicio en el informe de este calendario
     </label>
+    <label style="display:flex;align-items:center;gap:6px;margin:2px 0 12px;">
+      <input type="checkbox" id="eventoExcluirSinCubrir" style="width:auto;" ${evento.excluirSinCubrir?"checked":""} ${isAdmin?"":"disabled"}>
+      Es una nota/aviso del calendario, no un servicio a cubrir (no mostrar en "Sin cubrir")
+    </label>
     ${isAdmin?`<button class="btn btn-ghost" id="btnGuardarModalidad" style="margin:-6px 0 12px;">Guardar modalidad / informe</button>`:""}
     <div class="field">
       <label>Descripción del evento</label>
@@ -2532,7 +2531,8 @@ function renderAsignarDetalle(eventId){
     btnGuardarModalidad.addEventListener("click", ()=>{
       const modalidad = document.getElementById("eventoModalidad").value;
       const excluirInforme = document.getElementById("eventoExcluirInforme").checked;
-      guardarModalidadEvento(eventId, modalidad, excluirInforme);
+      const excluirSinCubrir = document.getElementById("eventoExcluirSinCubrir").checked;
+      guardarModalidadEvento(eventId, modalidad, excluirInforme, excluirSinCubrir);
     });
   }
 
@@ -2754,11 +2754,17 @@ function renderVistaTecnico(){
 
   const totalTecnicos = Object.keys(STATE.tecnicos).length;
   if(selTec.dataset.filledCount !== String(totalTecnicos)){
-    const seleccionActual = selTec.value;
+    let ultimoGuardado = "";
+    try{ ultimoGuardado = localStorage.getItem("ultimoTecnicoSeleccionado") || ""; }catch(e){}
+    const seleccionActual = selTec.value || ultimoGuardado;
     selTec.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
     if(seleccionActual && STATE.tecnicos[seleccionActual]) selTec.value = seleccionActual;
     selTec.dataset.filledCount = String(totalTecnicos);
-    selTec.onchange = ()=>{ cerrarEditorDiaTecnico(); renderVistaTecnico(); };
+    selTec.onchange = ()=>{
+      try{ localStorage.setItem("ultimoTecnicoSeleccionado", selTec.value); }catch(e){}
+      cerrarEditorDiaTecnico();
+      renderVistaTecnico();
+    };
   }
   if(!mesTecnicoActual) mesTecnicoActual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const mesValue = `${mesTecnicoActual.getFullYear()}-${String(mesTecnicoActual.getMonth()+1).padStart(2,"0")}`;
