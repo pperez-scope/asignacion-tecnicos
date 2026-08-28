@@ -428,13 +428,24 @@
   .dia-picker-cell.es-hoy{border-color:var(--teal);border-width:2px;}
   .dia-picker-cell.seleccionado{background:var(--amber);border-color:var(--amber);}
   .dia-picker-cell.seleccionado .day-num{color:#fff;font-weight:700;}
-  .mini-calendario{max-width:270px;}
+  .mini-calendario{max-width:270px;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;}
   .mini-calendario .month-grid{gap:2px;}
   .mini-calendario .dia-picker-cell{min-height:24px;padding:2px;font-size:10px;}
   .mini-calendario .weekday-label{font-size:9px;padding:2px 0;}
   .mini-calendario .week-nav{margin-bottom:6px;}
   .mini-calendario .week-nav .btn{padding:4px 8px;font-size:11px;}
   .mini-calendario .week-range{font-size:12px;}
+
+  /* Otras asignaciones: todo más agrupado y compacto */
+  #view-ausencias .card{padding:14px 16px;margin-bottom:10px;}
+  #view-ausencias label{font-size:10.5px;margin-bottom:3px;}
+  #view-ausencias .field{margin-bottom:8px;}
+  #view-ausencias .row{gap:8px;margin-bottom:0;}
+  #view-ausencias input,#view-ausencias select{padding:7px 9px;font-size:13px;}
+  #view-ausencias .btn{padding:7px 12px;font-size:12.5px;}
+  #view-ausencias .event-row{padding:8px 0;font-size:12.5px;}
+  #view-ausencias .event-fecha{font-size:13px;min-width:96px;}
+  .ausencias-divider{border:none;border-top:1px solid var(--line);margin:14px 0;}
   .day-cell.tiene-evento{background:#FDFCFA;border-color:var(--amber);}
   .day-cell.ausencia-libranza{background:#E4F2E6;}
   .day-cell.ausencia-permiso{background:#E2F4F1;}
@@ -812,13 +823,14 @@
   <!-- AUSENCIAS -->
   <section id="view-ausencias" class="hidden">
     <div class="card hidden" id="libranzasPendientesCard">
-      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Libranzas compensatorias pendientes</h3>
+      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">Libranzas compensatorias pendientes</h3>
       <div id="libranzasPendientesList"></div>
     </div>
-    <div class="card" id="ausenciasForm">
-      <p class="muted">Inicia sesión como administrador para añadir o quitar ausencias.</p>
-    </div>
     <div class="card">
+      <div id="ausenciasForm">
+        <p class="muted">Inicia sesión como administrador para añadir o quitar ausencias.</p>
+      </div>
+      <hr class="ausencias-divider">
       <div id="ausenciasList"></div>
     </div>
   </section>
