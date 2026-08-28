@@ -2212,6 +2212,19 @@ async function removeAusencia(tecnicoId, fecha){
 }
 
 /* ---------- Libranzas compensatorias por trabajar en fin de semana/festivo ---------- */
+/* Un evento es "compatible" con la asignación de oficina/ausencia que ya tuviera el técnico
+   ese día (no la sustituye, conviven) cuando es online o cuando ocurre en la propia oficina de
+   Scope — en ambos casos el técnico sigue en su sitio habitual. Solo lo presencial (en la sede
+   del cliente) ocupa al técnico físicamente en otro lugar y sustituye a la asignación de base. */
+function modalidadCompatible(modalidad){
+  return modalidad==="online" || modalidad==="oficina";
+}
+function textoModalidad(modalidad){
+  if(modalidad==="online") return "💻 Online";
+  if(modalidad==="oficina") return "🏠 En oficina (Scope)";
+  if(modalidad==="presencial") return "🏢 Presencial";
+  return "";
+}
 function esFindeOFestivo(fechaIso){
   return !esDiaLaborable(parseIsoLocal(fechaIso.slice(0,10)));
 }
@@ -2693,6 +2706,7 @@ function renderAsignarDetalle(eventId){
           <option value="" ${!evento.modalidad?"selected":""}>Sin especificar</option>
           <option value="presencial" ${evento.modalidad==="presencial"?"selected":""}>Presencial</option>
           <option value="online" ${evento.modalidad==="online"?"selected":""}>Online</option>
+          <option value="oficina" ${evento.modalidad==="oficina"?"selected":""}>En oficina (Scope)</option>
         </select>
       </div>
     </div>
@@ -2709,7 +2723,7 @@ function renderAsignarDetalle(eventId){
     <div style="margin:-6px 0 12px;">
       <span style="display:inline-flex;align-items:center;gap:6px;background:#E4F2E6;border:1px solid var(--teal);color:var(--teal);padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:600;">
         ✓ Guardado: ${[
-          evento.modalidad ? (evento.modalidad==="online"?"💻 Online":"🏢 Presencial") : null,
+          evento.modalidad ? textoModalidad(evento.modalidad) : null,
           evento.excluirInforme ? "no cuenta en el informe" : null,
           evento.excluirSinCubrir ? "es una nota, no un servicio" : null
         ].filter(Boolean).join(" · ")}
@@ -2717,7 +2731,7 @@ function renderAsignarDetalle(eventId){
     </div>
     ` : ""}
     ` : (evento.modalidad ? `
-    <p class="muted" style="margin:0 0 12px;">${evento.modalidad==="online"?"💻 Online":"🏢 Presencial"}</p>
+    <p class="muted" style="margin:0 0 12px;">${textoModalidad(evento.modalidad)}</p>
     ` : "")}
     <div class="field">
       <label>Descripción del evento</label>
@@ -3104,7 +3118,7 @@ function horasDesdeTextoLibre(str){
 function horasDiaTecnico(tecnicoId, fechaIso){
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
-  const todosOnline = eventosDia.length>0 && eventosDia.every(([,ev])=> ev.modalidad==="online");
+  const todosOnline = eventosDia.length>0 && eventosDia.every(([,ev])=> modalidadCompatible(ev.modalidad));
   const hayEventoPresencial = eventosDia.length>0 && !todosOnline;
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
 
@@ -3185,7 +3199,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
-  const hayPresencial = eventosDia.some(([,ev])=> ev.modalidad!=="online");
+  const hayPresencial = eventosDia.some(([,ev])=> !modalidadCompatible(ev.modalidad));
   const segmentos = [];
 
   // Evento(s) presencial(es): ocupan al técnico físicamente, van tal cual y no hay base debajo.
@@ -3233,7 +3247,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     segmentos.push({ inicio:baseRango.inicio, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso, lugar:baseLugar, sala:baseSala, tipoAsignacion:baseTipoAsignacion });
   });
   eventosOnline.forEach(({id,ev,rango,datos})=>{
-    segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:"online", lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
+    segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
   });
   segmentos.sort((a,b)=> a.inicio-b.inicio);
 
@@ -3250,7 +3264,7 @@ function segmentosATarjetasHTML(segmentos){
     if(seg.tipo==="todo-el-dia"){
       return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}</div>`;
     }
-    const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="presencial" ? "🏢 " : "");
+    const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="oficina" ? "🏠 " : (seg.modalidad==="presencial" ? "🏢 " : ""));
     const verEvento = seg.tipo==="evento" && seg.id ? `data-ver-evento="${seg.id}"` : "";
     const claseClicable = seg.tipo==="evento" && seg.id ? "turno-block-clicable" : "";
     if(seg.inicio==null || seg.fin==null){
