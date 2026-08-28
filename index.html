@@ -49,28 +49,37 @@
   a{color:inherit;}
   button{font-family:inherit;}
 
-  header.app-bar{
+  .app-shell{
+    display:flex;
+    align-items:stretch;
+    min-height:100vh;
+  }
+  .sidebar{
+    width:220px;
+    flex-shrink:0;
     background:var(--navy);
     color:#fff;
-    padding:14px 16px;
     display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:12px;
+    flex-direction:column;
     position:sticky;
     top:0;
-    z-index:20;
-    border-bottom:3px solid var(--amber);
+    align-self:flex-start;
+    height:100vh;
+    border-right:3px solid var(--amber);
+  }
+  .app-content{
+    flex:1;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
   }
   .brand{
     font-family:var(--font-display);
     font-weight:700;
     letter-spacing:0.04em;
     text-transform:uppercase;
-    font-size:20px;
-    display:flex;
-    align-items:center;
-    gap:10px;
+    font-size:18px;
+    padding:18px 16px 14px;
   }
   .brand img{height:22px;width:auto;display:block;}
   .brand .divider{width:1px;height:20px;background:rgba(255,255,255,.25);}
@@ -83,7 +92,11 @@
     font-size:11px;
     color:#BFDAD7;
   }
-  .auth-box{display:flex;align-items:center;gap:10px;font-size:13px;}
+  .auth-box{
+    display:flex;flex-direction:column;align-items:stretch;gap:8px;
+    font-size:12.5px;padding:14px 16px;
+    border-top:1px solid rgba(255,255,255,.15);
+  }
   .btn{
     border:none;
     border-radius:8px;
@@ -103,30 +116,34 @@
 
   nav.tabs{
     display:flex;
-    overflow-x:auto;
-    gap:4px;
-    background:var(--navy-2);
-    padding:0 10px;
-    position:sticky;
-    top:56px;
-    z-index:19;
+    flex-direction:column;
+    gap:2px;
+    background:transparent;
+    padding:6px 10px;
+    flex:1;
+    overflow-y:auto;
     scrollbar-width:none;
   }
   nav.tabs::-webkit-scrollbar{display:none;}
   nav.tabs button{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    text-align:left;
     background:transparent;
     color:#C7CFD8;
     border:none;
-    padding:12px 14px;
-    font-family:var(--font-display);
-    font-size:15px;
-    letter-spacing:.03em;
-    text-transform:uppercase;
-    white-space:nowrap;
-    border-bottom:3px solid transparent;
+    border-left:3px solid transparent;
+    border-radius:7px;
+    padding:10px 10px;
+    font-family:var(--font-body);
+    font-size:13.5px;
+    font-weight:600;
+    white-space:normal;
     cursor:pointer;
   }
-  nav.tabs button.active{color:#fff;border-bottom-color:var(--amber);}
+  nav.tabs button.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--amber);}
+  .tab-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
 
   #bannerLibranzas{
     background:#FDE7E1;
@@ -141,16 +158,33 @@
     font-weight:600;
     text-align:center;
     flex-wrap:wrap;
-    position:sticky;
-    top:100px;
-    z-index:18;
   }
   #bannerLibranzas button{
     background:var(--danger);color:#fff;border:none;
     padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;
   }
 
-  main{padding:16px;max-width:1300px;margin:0 auto;}
+  main{padding:16px;max-width:1300px;margin:0 auto;width:100%;box-sizing:border-box;}
+  @media (max-width:860px){
+    .app-shell{flex-direction:column;}
+    .sidebar{
+      width:100%;height:auto;position:sticky;top:0;z-index:20;
+      flex-direction:row;align-items:center;
+      border-right:none;border-bottom:3px solid var(--amber);
+    }
+    .brand{padding:10px 12px;font-size:14px;white-space:nowrap;}
+    nav.tabs{
+      flex-direction:row;overflow-x:auto;flex:1;padding:0 4px;align-items:stretch;
+    }
+    nav.tabs button{
+      flex-direction:column;gap:2px;white-space:nowrap;
+      border-left:none;border-bottom:3px solid transparent;border-radius:0;
+      padding:10px 12px;font-size:11px;
+    }
+    nav.tabs button.active{background:transparent;border-left-color:transparent;border-bottom-color:var(--amber);}
+    .tab-icon{font-size:15px;width:auto;}
+    .auth-box{border-top:none;flex-direction:row;align-items:center;padding:6px 10px;width:auto;}
+  }
   .card{
     background:var(--surface);
     border:1px solid var(--line);
@@ -690,27 +724,28 @@
 </head>
 <body>
 
-<header class="app-bar">
-  <div class="brand">
-    <div class="app-name">Asignación<small>Scope Producciones</small></div>
-  </div>
-  <div class="auth-box" id="authBox">
-    <span class="muted" style="color:#C7CFD8;">Cargando…</span>
-  </div>
-</header>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="app-name">Asignación<small>Scope Producciones</small></div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn"><span class="tab-icon">📋</span><span>Sin cubrir</span></button>
+      <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span></button>
+      <button data-tab="tecnico"><span class="tab-icon">👤</span><span>Vista técnico</span></button>
+      <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span></button>
+      <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span></button>
+      <button data-tab="admin" id="tabAdminBtn" class="hidden"><span class="tab-icon">⚙️</span><span>Admin</span></button>
+    </nav>
+    <div class="auth-box" id="authBox">
+      <span class="muted" style="color:#C7CFD8;">Cargando…</span>
+    </div>
+  </aside>
 
-<nav class="tabs" id="tabs">
-  <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn">Sin cubrir</button>
-  <button data-tab="asignar">Calendarios</button>
-  <button data-tab="tecnico">Vista técnico</button>
-  <button data-tab="general">Cuadrante</button>
-  <button data-tab="ausencias" id="tabAusenciasBtn">Otras asignaciones</button>
-  <button data-tab="admin" id="tabAdminBtn" class="hidden">Admin</button>
-</nav>
+  <div class="app-content">
+    <div id="bannerLibranzas" class="hidden"></div>
 
-<div id="bannerLibranzas" class="hidden"></div>
-
-<main>
+    <main>
 
   <!-- SIN CUBRIR -->
   <section id="view-sincubrir">
@@ -721,23 +756,6 @@
 
   <!-- ASIGNACIONES -->
   <section id="view-asignar" class="hidden">
-    <div class="card" style="padding:8px 14px;">
-      <div class="row" style="align-items:center;">
-        <div class="field" style="margin-bottom:0;">
-          <div class="segmented segmented-compact" id="asignacionesModoSwitch">
-            <button data-modo="semana" class="active">Semana</button>
-            <button data-modo="mes">Mes</button>
-          </div>
-        </div>
-        <div class="field hidden" id="mesAsignacionesField" style="margin-bottom:0;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <button type="button" class="btn btn-ghost" id="btnMesAsignacionesAnterior">‹</button>
-            <span id="mesAsignacionesLabel" style="font-family:var(--font-display);font-weight:700;color:var(--navy);min-width:130px;text-align:center;"></span>
-            <button type="button" class="btn btn-ghost" id="btnMesAsignacionesSiguiente">›</button>
-          </div>
-        </div>
-      </div>
-    </div>
     <div class="card" id="asignarWeek"></div>
     <div class="modal-overlay hidden" id="asignarDetalleCard">
       <div class="modal-box">
@@ -878,9 +896,11 @@
     </div>
   </section>
 
-</main>
+    </main>
 
-<footer>Uso interno — Scope Producciones</footer>
+    <footer>Uso interno — Scope Producciones</footer>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -1217,6 +1237,23 @@ let calendarioAusenciaMes = null; // mes mostrado en el mini-calendario de selec
 let ultimoDiaClicadoAusencia = null; // para el mayús+clic (seleccionar un rango entero)
 
 /* Genera el HTML de una semana tipo iCal con navegación. onlySinCubrir filtra los ya cubiertos. */
+/* Construye el selector Semana/Mes de Calendarios (se integra junto a la fecha en la propia
+   barra de navegación, tanto en la vista semanal como en la mensual). */
+function segmentoVistaAsignarHTML(){
+  return `<div class="segmented segmented-compact" id="asignacionesModoSwitch">
+    <button data-modo="semana" class="${asignacionesModo==="semana"?"active":""}">Semana</button>
+    <button data-modo="mes" class="${asignacionesModo==="mes"?"active":""}">Mes</button>
+  </div>`;
+}
+function wireSegmentoVistaAsignar(cont){
+  cont.querySelectorAll("#asignacionesModoSwitch button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      asignacionesModo = btn.dataset.modo;
+      render();
+    });
+  });
+}
+
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
   const weekStart = weekState[weekKey];
   const todosEventos = Object.entries(STATE.eventos);
@@ -1230,7 +1267,10 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
 
   let html = `<div class="week-nav">
       <button class="btn btn-ghost" data-week-nav="-1">‹ Semana anterior</button>
-      <div class="week-range">${fmtWeekRange(weekStart)}</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;">
+        <div class="week-range">${fmtWeekRange(weekStart)}</div>
+        ${weekKey==="asignar" ? segmentoVistaAsignarHTML() : ""}
+      </div>
       <button class="btn btn-ghost" data-week-nav="1">Semana siguiente ›</button>
     </div><div class="week-grid">`;
 
@@ -1262,6 +1302,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
   const cont = document.getElementById(containerId);
   cont.innerHTML = html;
 
+  if(weekKey==="asignar") wireSegmentoVistaAsignar(cont);
   cont.querySelectorAll("[data-week-nav]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const dias = parseInt(btn.dataset.weekNav,10) * 7;
@@ -2179,43 +2220,8 @@ let asignacionesModo = "semana";
 let mesAsignacionesActual = null;
 
 function renderAsignar(){
-  const switchEl = document.getElementById("asignacionesModoSwitch");
-  const mesField = document.getElementById("mesAsignacionesField");
-
-  if(!switchEl.dataset.wired){
-    switchEl.dataset.wired = "1";
-    switchEl.querySelectorAll("button").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        asignacionesModo = btn.dataset.modo;
-        switchEl.querySelectorAll("button").forEach(b=>b.classList.toggle("active", b===btn));
-        render();
-      });
-    });
-  }
   if(!mesAsignacionesActual) mesAsignacionesActual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const mesValue = `${mesAsignacionesActual.getFullYear()}-${String(mesAsignacionesActual.getMonth()+1).padStart(2,"0")}`;
-  const mesLabel = document.getElementById("mesAsignacionesLabel");
-  if(mesLabel){
-    const txt = mesAsignacionesActual.toLocaleDateString("es-ES", { month:"long", year:"numeric" });
-    mesLabel.textContent = txt.charAt(0).toUpperCase()+txt.slice(1);
-  }
-  const btnMesAnt = document.getElementById("btnMesAsignacionesAnterior");
-  const btnMesSig = document.getElementById("btnMesAsignacionesSiguiente");
-  if(btnMesAnt && !btnMesAnt.dataset.wired){
-    btnMesAnt.dataset.wired = "1";
-    btnMesAnt.addEventListener("click", ()=>{
-      mesAsignacionesActual = new Date(mesAsignacionesActual.getFullYear(), mesAsignacionesActual.getMonth()-1, 1);
-      render();
-    });
-  }
-  if(btnMesSig && !btnMesSig.dataset.wired){
-    btnMesSig.dataset.wired = "1";
-    btnMesSig.addEventListener("click", ()=>{
-      mesAsignacionesActual = new Date(mesAsignacionesActual.getFullYear(), mesAsignacionesActual.getMonth()+1, 1);
-      render();
-    });
-  }
-  mesField.classList.toggle("hidden", asignacionesModo!=="mes");
 
   if(asignacionesModo==="semana"){
     renderWeekGrid("asignarWeek", "asignar", { onlySinCubrir:false, clickable:true });
@@ -2236,7 +2242,17 @@ function renderAsignarMes(mesValue){
   const [year, month] = mesValue.split("-").map(Number);
   const diasEnMes = new Date(year, month, 0).getDate();
   const primerDiaSemana = (new Date(year, month-1, 1).getDay() + 6) % 7; // lunes=0
-  let html = `<div class="month-grid">`;
+  const nombreMes = new Date(year, month-1, 1).toLocaleDateString("es-ES", { month:"long", year:"numeric" });
+  const nombreMesCap = nombreMes.charAt(0).toUpperCase()+nombreMes.slice(1);
+
+  let html = `<div class="week-nav">
+      <button class="btn btn-ghost" data-mes-asignar-nav="-1">‹ Mes anterior</button>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;">
+        <div class="week-range">${nombreMesCap}</div>
+        ${segmentoVistaAsignarHTML()}
+      </div>
+      <button class="btn btn-ghost" data-mes-asignar-nav="1">Mes siguiente ›</button>
+    </div><div class="month-grid">`;
   ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
   for(let i=0;i<primerDiaSemana;i++) html += `<div></div>`;
 
@@ -2260,6 +2276,14 @@ function renderAsignarMes(mesValue){
 
   const cont = document.getElementById("asignarWeek");
   cont.innerHTML = html;
+  wireSegmentoVistaAsignar(cont);
+  cont.querySelectorAll("[data-mes-asignar-nav]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const delta = parseInt(btn.dataset.mesAsignarNav,10);
+      mesAsignacionesActual = new Date(mesAsignacionesActual.getFullYear(), mesAsignacionesActual.getMonth()+delta, 1);
+      render();
+    });
+  });
   cont.querySelectorAll("[data-event-id]").forEach(card=>{
     card.addEventListener("click", ()=>{
       eventoSeleccionado = card.dataset.eventId; editandoTecnicoId = null;
