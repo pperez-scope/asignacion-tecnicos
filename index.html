@@ -1682,14 +1682,17 @@ document.getElementById("btnArreglarTeletrabajo").addEventListener("click", asyn
 
 document.getElementById("btnArreglarLibranzas").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("arreglarLibranzasStatus");
-  // Para cada libranza con la nota antigua (sin fecha), buscamos en las asignaciones qué evento
-  // la referencia (asignaciones/{eventId}/{tid}/libranzaCompensatoria === esta fecha) y de ahí
-  // sacamos la fecha del día trabajado que compensa.
+  // Para cada libranza sin nota o con la nota antigua (sin fecha), buscamos en las asignaciones qué
+  // evento la referencia (asignaciones/{eventId}/{tid}/libranzaCompensatoria === esta fecha) y de ahí
+  // sacamos la fecha del día trabajado que compensa. Si ya tiene fecha (formato nuevo) o no se
+  // encuentra ningún evento vinculado, se deja intacta.
   const updates = {};
   let corregidas = 0, sinEncontrar = 0;
   Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
     Object.entries(porFecha||{}).forEach(([fechaLibranza, datos])=>{
-      if(datos.tipo!=="libranza" || datos.nota!=="Compensa trabajo en fin de semana/festivo") return;
+      if(datos.tipo!=="libranza") return;
+      const yaTieneFecha = datos.nota && /\([^()]+\)\s*$/.test(datos.nota);
+      if(yaTieneFecha) return;
       let eventIdEncontrado = null;
       for(const [eventId, porTecnico] of Object.entries(STATE.asignaciones)){
         if(porTecnico?.[tid]?.libranzaCompensatoria === fechaLibranza){
