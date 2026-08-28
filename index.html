@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Asignación de Técnicos — Scope</title>
+<title>Planificación — Scope Producciones</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#2E6B66" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -704,6 +704,10 @@
   }
   @media (max-width:700px){
     table.cuadrante-table{table-layout:fixed;}
+    table.cuadrante-table .celda-color{height:15px;}
+    table.cuadrante-table th .th-num{font-size:9.5px;}
+    table.cuadrante-table th .th-letra{font-size:8px;}
+    table.cuadrante-table td.tecnico-name{font-size:10px;}
   }
 
   /* Vista Lista de técnico (tipo Excel) */
@@ -755,7 +759,7 @@
 <div class="app-shell">
   <aside class="sidebar">
     <div class="brand">
-      <div class="app-name">Planning<small>Scope Producciones</small></div>
+      <div class="app-name">Planificación<small>Scope Producciones</small></div>
     </div>
     <nav class="tabs" id="tabs">
       <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn"><span class="tab-icon">📋</span><span>Sin cubrir</span></button>
@@ -3755,12 +3759,16 @@ function renderVistaGeneral(){
     dias.push(d);
   }
 
-  // Ancho de columna calculado para que las 4 semanas por defecto (28 días) llenen
-  // exactamente el ancho visible del contenedor, sin necesidad de hacer scroll para verlas.
-  const ANCHO_TECNICO = 130;
+  // Ancho de columna calculado para que las semanas objetivo llenen el ancho visible del
+  // contenedor, sin necesidad de hacer scroll para verlas. En escritorio se ajustan las 4
+  // semanas por defecto (28 días); en móvil, la pantalla no da para tanto sin que las columnas
+  // queden ilegibles, así que se ajusta 1 semana (7 días) y el resto queda accesible con scroll.
+  const esMovil = window.innerWidth < 700;
+  const ANCHO_TECNICO = esMovil ? 78 : 130;
   const wrapEl = document.getElementById("generalTableWrap");
   const anchoDisponible = wrapEl ? wrapEl.clientWidth : 900;
-  const anchoDia = Math.max(30, Math.floor((anchoDisponible - ANCHO_TECNICO) / 28));
+  const diasObjetivo = esMovil ? 7 : 28;
+  const anchoDia = Math.max(esMovil ? 26 : 30, Math.floor((anchoDisponible - ANCHO_TECNICO) / diasObjetivo));
 
   // Fila superior con el nombre de cada mes, fusionando las columnas que le pertenecen.
   const gruposMes = [];
