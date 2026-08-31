@@ -68,6 +68,18 @@
     height:100vh;
     border-right:3px solid var(--amber);
   }
+  .sidebar.panel-mode{
+    width:100%;
+    height:auto;
+    flex-direction:row;
+    align-items:center;
+    justify-content:space-between;
+    position:static;
+    border-right:none;
+    border-bottom:2px solid var(--amber);
+  }
+  .sidebar.panel-mode nav.tabs{display:none;}
+  .sidebar.panel-mode .brand{padding:6px 12px;}
   .app-content{
     flex:1;
     min-width:0;
@@ -852,7 +864,7 @@
 <body>
 
 <div class="app-shell">
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="app-name">Planificación<small>Scope Producciones</small></div>
     </div>
@@ -1614,6 +1626,9 @@ if(location.hash){
   const btnInicial = document.querySelector(`nav.tabs button[data-tab="${location.hash.slice(1)}"]`);
   if(btnInicial) btnInicial.click();
 }
+if(new URLSearchParams(location.search).get("panel")==="1"){
+  document.getElementById("sidebar").classList.add("panel-mode");
+}
 
 /* ---------- CALENDAR API ---------- */
 async function calendarFetch(path, options={}){
@@ -1917,7 +1932,7 @@ document.getElementById("btnSync").addEventListener("click", ()=> sincronizarTod
 function actualizarFrameSplit(letra){
   const select = document.getElementById(`splitSelect${letra}`);
   const frame = document.getElementById(`splitFrame${letra}`);
-  frame.src = `${location.pathname}#${select.value}`;
+  frame.src = `${location.pathname}?panel=1#${select.value}`;
 }
 document.getElementById("btnActivarSplit").addEventListener("click", ()=>{
   document.getElementById("splitView").classList.remove("hidden");
