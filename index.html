@@ -68,18 +68,7 @@
     height:100vh;
     border-right:3px solid var(--amber);
   }
-  .sidebar.panel-mode{
-    width:100%;
-    height:auto;
-    flex-direction:row;
-    align-items:center;
-    justify-content:space-between;
-    position:static;
-    border-right:none;
-    border-bottom:2px solid var(--amber);
-  }
-  .sidebar.panel-mode nav.tabs{display:none;}
-  .sidebar.panel-mode .brand{padding:6px 12px;}
+  .sidebar.panel-mode{display:none;}
   .app-content{
     flex:1;
     min-width:0;
@@ -241,7 +230,7 @@
     nav.tabs button.active{background:rgba(0,0,0,.06);border-bottom-color:var(--amber);}
     .auth-box{display:contents;}
     .auth-box > *{flex:0 0 auto;}
-    .auth-box .btn{padding:6px 10px;font-size:12px;}
+    .auth-box .btn{padding:6px 12px;font-size:12px;}
     .texto-largo{display:none;}
     .texto-corto{display:inline;}
     .row > .field{flex:1 1 100%;min-width:0;}
@@ -277,7 +266,7 @@
   }
   .segmented button.active{background:var(--navy);color:#fff;}
   .segmented button+button{border-left:1px solid var(--line);}
-  .segmented-compact button{padding:6px 12px;font-size:13px;}
+  .segmented-compact button{padding:6px 12px;font-size:12px;}
 
   input,select,textarea{
     font-family:inherit;
@@ -544,7 +533,7 @@
   #view-ausencias .field{margin-bottom:8px;}
   #view-ausencias .row{gap:8px;margin-bottom:0;}
   #view-ausencias input,#view-ausencias select{padding:7px 9px;font-size:13px;}
-  #view-ausencias .btn{padding:7px 12px;font-size:13px;}
+  #view-ausencias .btn{padding:6px 12px;font-size:12px;}
   #view-ausencias .event-row{padding:8px 0;font-size:13px;}
   #view-ausencias .event-fecha{font-size:13px;min-width:96px;}
   .ausencias-layout{display:flex;gap:18px;align-items:flex-start;}
@@ -969,7 +958,7 @@
     <div class="card" style="padding:6px 14px;">
       <div class="row" style="align-items:center;">
         <p class="muted" style="margin:0;flex:1;font-size:13px;">4 semanas visibles (anterior, actual y 2 siguientes) · desliza para ver más</p>
-        <button class="btn btn-ghost" id="btnCuadranteHoy" style="padding:5px 12px;font-size:12px;">Ir a hoy</button>
+        <button class="btn btn-ghost" id="btnCuadranteHoy" style="padding:6px 12px;font-size:12px;">Ir a hoy</button>
       </div>
     </div>
     <div class="card">
