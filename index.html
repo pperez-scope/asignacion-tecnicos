@@ -348,7 +348,14 @@
   .week-event.sin-cubrir{border-left-style:dashed;background:#FBFBF9;}
   .week-event.selected{outline:2px solid var(--navy);}
   .week-event-time{display:block;font-weight:700;color:var(--ink-soft);font-size:10px;}
-  .week-event-title{display:block;font-weight:600;color:var(--ink);line-height:1.25;}
+  .week-event-title{
+    display:-webkit-box;
+    -webkit-line-clamp:4;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    font-weight:600;color:var(--ink);line-height:1.25;
+  }
   .week-event-tecnicos{display:block;font-size:10px;color:var(--teal);margin-top:2px;}
   .week-event-pendiente{
     display:inline-block;margin-top:2px;
@@ -597,6 +604,11 @@
     margin-top:2px;
   }
   .turno-cliente{
+    display:-webkit-box;
+    -webkit-line-clamp:4;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+    text-overflow:ellipsis;
     font-size:11px;
     font-weight:600;
     color:var(--ink);
