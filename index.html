@@ -2402,6 +2402,13 @@ function renderAvisosCambios(){
 function render(){
   renderBannerLibranzas();
   renderAvisosCambios();
+  const detalleCard = document.getElementById("asignarDetalleCard");
+  if(eventoSeleccionado && STATE.eventos[eventoSeleccionado]){
+    detalleCard.classList.remove("hidden");
+    renderAsignarDetalle(eventoSeleccionado);
+  } else {
+    detalleCard.classList.add("hidden");
+  }
   const activeTab = document.querySelector("nav.tabs button.active")?.dataset.tab;
   if(!activeTab) return;
   if(activeTab==="sincubrir") renderSinCubrir();
@@ -2471,14 +2478,6 @@ function renderAsignar(){
     renderWeekGrid("asignarWeek", "asignar", { onlySinCubrir:false, clickable:true });
   } else {
     renderAsignarMes(mesValue);
-  }
-
-  const detalleCard = document.getElementById("asignarDetalleCard");
-  if(eventoSeleccionado && STATE.eventos[eventoSeleccionado]){
-    detalleCard.classList.remove("hidden");
-    renderAsignarDetalle(eventoSeleccionado);
-  } else {
-    detalleCard.classList.add("hidden");
   }
 }
 
@@ -2781,6 +2780,13 @@ function renderAsignarDetalle(eventId){
       <label>Descripción del evento</label>
       <textarea id="notaEvento" rows="2" placeholder="Notas internas: material especial, punto de encuentro, contacto in situ…" ${isAdmin?"":"disabled"}>${notaActual}</textarea>
       ${isAdmin?`<button class="btn btn-ghost" id="btnGuardarNota" style="margin-top:6px;">Guardar descripción</button>`:""}
+      ${evento.notaInterna ? `
+      <div style="margin-top:8px;">
+        <span style="display:inline-flex;align-items:center;gap:6px;background:#E4F2E6;border:1px solid var(--teal);color:var(--teal);padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;">
+          ✓ Guardado: ${evento.notaInterna.length>60 ? evento.notaInterna.slice(0,60)+"…" : evento.notaInterna}
+        </span>
+      </div>
+      ` : ""}
       <p class="muted" style="margin-top:4px;">Esta nota es solo para uso interno de la app; no se envía a Google Calendar.</p>
     </div>
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
