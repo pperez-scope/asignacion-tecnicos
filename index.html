@@ -3923,13 +3923,17 @@ function renderVistaGeneral(){
   }
 
   // Ancho de columna calculado para que las semanas objetivo llenen el ancho visible del
-  // contenedor, sin necesidad de hacer scroll para verlas. En escritorio se ajustan las 4
-  // semanas por defecto (28 días); en móvil, la pantalla no da para tanto sin que las columnas
-  // queden ilegibles, así que se ajusta 1 semana (7 días) y el resto queda accesible con scroll.
-  const esMovil = window.innerWidth < 700;
-  const ANCHO_TECNICO = esMovil ? 78 : 130;
+  // contenedor, sin necesidad de hacer scroll para verlas. En escritorio (o en un panel de
+  // pantalla dividida con espacio suficiente) se ajustan las 4 semanas por defecto (28 días);
+  // solo si el espacio realmente disponible es estrecho (móvil) se ajusta a 1 semana (7 días)
+  // y el resto queda accesible con scroll. Se mide el ancho real del contenedor, no el de toda
+  // la ventana, para que un panel de pantalla dividida más justo de espacio no se confunda con
+  // un móvil si en realidad tiene sitio de sobra para el modo de escritorio.
   const wrapEl = document.getElementById("generalTableWrap");
-  const anchoDisponible = wrapEl ? wrapEl.clientWidth : 900;
+  const anchoVentanaDisponible = wrapEl ? wrapEl.clientWidth : 900;
+  const esMovil = anchoVentanaDisponible < 480;
+  const ANCHO_TECNICO = esMovil ? 78 : 130;
+  const anchoDisponible = anchoVentanaDisponible;
   const diasObjetivo = esMovil ? 7 : 28;
   const anchoDia = Math.max(esMovil ? 26 : 30, Math.floor((anchoDisponible - ANCHO_TECNICO) / diasObjetivo));
 
