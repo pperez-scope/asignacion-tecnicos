@@ -326,6 +326,60 @@
     gap:8px;
     overflow-x:auto;
   }
+  /* Cuadrícula horaria de Calendarios (vista semanal, tipo Google Calendar/iCal) */
+  .hcal-wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;}
+  .hcal-header, .hcal-allday-row{
+    display:grid;grid-template-columns:52px repeat(7,1fr);
+    border-bottom:1px solid var(--line);
+  }
+  .hcal-time-col-head{border-right:1px solid var(--line);}
+  .hcal-day-head{
+    text-align:center;padding:6px 4px;border-left:1px solid var(--line);
+    font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
+    font-size:11px;color:var(--ink-soft);
+  }
+  .hcal-day-head span{display:block;font-size:15px;font-weight:700;color:var(--ink);}
+  .hcal-day-head.today{background:var(--mint);}
+  .hcal-day-head.today span{color:var(--teal);}
+  .hcal-allday-row{min-height:22px;}
+  .hcal-allday-col{
+    border-left:1px solid var(--line);padding:2px 3px;
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .hcal-allday-event{
+    font-size:10px;font-weight:600;padding:2px 5px;border-radius:4px;color:#fff;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
+  }
+  .hcal-body{display:grid;grid-template-columns:52px repeat(7,1fr);max-height:70vh;overflow-y:auto;position:relative;}
+  .hcal-time-col{position:relative;border-right:1px solid var(--line);}
+  .hcal-hour-label{
+    position:absolute;right:6px;transform:translateY(-50%);
+    font-size:10px;color:var(--ink-soft);white-space:nowrap;
+  }
+  .hcal-day-col{position:relative;border-left:1px solid var(--line);}
+  .hcal-day-col.today{background:#FAFDFD;}
+  .hcal-hour-line{position:absolute;left:0;right:0;border-top:1px solid var(--line);}
+  .hcal-now-line{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--danger);z-index:5;}
+  .hcal-now-line::before{
+    content:"";position:absolute;left:-4px;top:-4px;width:8px;height:8px;
+    border-radius:50%;background:var(--danger);
+  }
+  .hcal-event{
+    position:absolute;border-radius:5px;border:1px solid rgba(0,0,0,.08);
+    padding:2px 5px;overflow:hidden;cursor:pointer;color:#fff;
+    box-sizing:border-box;transition:z-index .01s;
+  }
+  .hcal-event:hover{z-index:8;box-shadow:0 2px 8px rgba(0,0,0,.25);}
+  .hcal-event.sin-cubrir{background:#fff !important;border:1px dashed var(--ink-soft);color:var(--ink);}
+  .hcal-event-time{display:block;font-size:9.5px;font-weight:700;opacity:.9;}
+  .hcal-event-title{display:block;font-size:10.5px;font-weight:600;line-height:1.2;}
+  .hcal-event.selected{outline:2px solid var(--navy);}
+  @media (max-width:700px){
+    .hcal-header, .hcal-allday-row, .hcal-body{grid-template-columns:38px repeat(7,minmax(70px,1fr));}
+    .hcal-wrap{overflow-x:auto;}
+    .hcal-day-head{font-size:9px;}
+    .hcal-day-head span{font-size:12px;}
+  }
   .week-day-col{
     background:#FBFBF9;
     border:1px solid var(--line);
@@ -1509,6 +1563,26 @@ function wireSegmentoVistaAsignar(cont){
   });
 }
 
+/* Minutos desde medianoche de una fecha-hora ISO (solo la parte de hora, no el día) */
+function minutosDelDia(iso){
+  const d = new Date(iso);
+  return d.getHours()*60 + d.getMinutes();
+}
+/* Reparte los eventos solapados de un mismo día en "carriles" (columnas dentro del día), igual
+   que hace Google Calendar, para que no se tapen entre sí visualmente. */
+function asignarCarriles(eventos){
+  const carriles = [];
+  eventos.forEach(ev=>{
+    let colocado = false;
+    for(let i=0;i<carriles.length;i++){
+      const ultimo = carriles[i][carriles[i].length-1];
+      if(ev._inicio >= ultimo._fin){ carriles[i].push(ev); ev._carril = i; colocado = true; break; }
+    }
+    if(!colocado){ ev._carril = carriles.length; carriles.push([ev]); }
+  });
+  eventos.forEach(ev=> ev._totalCarriles = carriles.length);
+  return eventos;
+}
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
   const weekStart = weekState[weekKey];
   const todosEventos = Object.entries(STATE.eventos).filter(([,ev])=> calendarioVisible(ev.calendario));
@@ -1519,6 +1593,8 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
   const dias = [];
   for(let i=0;i<7;i++){ const d=new Date(weekStart); d.setDate(d.getDate()+i); dias.push(d); }
   const hoyIso = isoDate(new Date());
+  const PX_POR_MIN = 0.9; // ~54px por hora
+  const ALTO_TOTAL = (TIMELINE_FIN-TIMELINE_INICIO)*PX_POR_MIN;
 
   let html = `<div class="week-nav">
       <button class="btn btn-ghost" data-week-nav="-1">‹ Semana anterior</button>
@@ -1527,32 +1603,79 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
         ${weekKey==="asignar" ? segmentoVistaAsignarHTML() : ""}
       </div>
       <button class="btn btn-ghost" data-week-nav="1">Semana siguiente ›</button>
-    </div><div class="week-grid">`;
+    </div><div class="hcal-wrap">`;
 
+  // Cabecera con el nombre y número de cada día
+  html += `<div class="hcal-header"><div class="hcal-time-col-head"></div>`;
   dias.forEach(d=>{
     const diaIso = isoDate(d);
-    const eventosDia = eventosFiltrados
-      .filter(([,ev])=> (ev.start||"").slice(0,10) === diaIso)
-      .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
-    html += `<div class="week-day-col ${diaIso===hoyIso?'today':''}">
-      <div class="week-day-head">${d.toLocaleDateString("es-ES",{weekday:"short"})}<span>${d.getDate()}</span></div>
-      <div class="week-day-body">`;
-    if(eventosDia.length===0){
-      html += `<div class="week-empty">—</div>`;
-    } else {
-      eventosDia.forEach(([id,ev])=>{
-        const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
-        const cubierto = nTec>0;
-        html += `<div class="week-event ${cubierto?'':'sin-cubrir'} ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="border-left-color:${colorFor(ev.calendario)};" ${clickable?`data-event-id="${id}"`:""}>
-          <span class="week-event-time">${fmtHora(ev.start)}</span>
-          <span class="week-event-title">${ev.summary}</span>
-          ${cubierto?`<span class="week-event-tecnicos">${nTec} técnico${nTec>1?"s":""}</span>`:`<span class="week-event-pendiente">Sin cubrir</span>`}
-        </div>`;
-      });
-    }
-    html += `</div></div>`;
+    html += `<div class="hcal-day-head ${diaIso===hoyIso?'today':''}">${d.toLocaleDateString("es-ES",{weekday:"short"})}<span>${d.getDate()}</span></div>`;
   });
   html += `</div>`;
+
+  // Datos de eventos por día, separando los de todo el día de los que tienen hora
+  const eventosPorDia = dias.map(d=>{
+    const diaIso = isoDate(d);
+    const delDia = eventosFiltrados.filter(([,ev])=> (ev.start||"").slice(0,10) === diaIso);
+    const conHora = [], todoElDia = [];
+    delDia.forEach(([id,ev])=>{
+      if(!ev.start || !ev.start.includes("T")){ todoElDia.push([id,ev]); return; }
+      let inicio = minutosDelDia(ev.start);
+      let fin = ev.end ? minutosDelDia(ev.end) : inicio+60;
+      if(fin<=inicio) fin += 24*60;
+      conHora.push({ id, ev, _inicio:Math.max(inicio,TIMELINE_INICIO), _fin:Math.min(fin,TIMELINE_FIN) });
+    });
+    conHora.sort((a,b)=> a._inicio-b._inicio || a._fin-b._fin);
+    return { diaIso, todoElDia, conHora: asignarCarriles(conHora) };
+  });
+
+  // Fila de eventos "todo el día" (solo se muestra si hay alguno esa semana, para no perder sitio)
+  const hayTodoElDia = eventosPorDia.some(d=>d.todoElDia.length>0);
+  if(hayTodoElDia){
+    html += `<div class="hcal-allday-row"><div class="hcal-time-col-head"></div>`;
+    eventosPorDia.forEach(({todoElDia})=>{
+      html += `<div class="hcal-allday-col">${todoElDia.map(([id,ev])=>{
+        const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
+        const cubierto = nTec>0;
+        return `<div class="hcal-allday-event ${clickable?'':'no-click'}" style="background:${colorFor(ev.calendario)};${cubierto?'':'outline:2px dashed #fff;outline-offset:-2px;'}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">${ev.summary}</div>`;
+      }).join("")}</div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Cuerpo: columna de horas + 7 columnas de eventos posicionados por minuto
+  html += `<div class="hcal-body" id="${containerId}-body"><div class="hcal-time-col">`;
+  for(let m=TIMELINE_INICIO; m<=TIMELINE_FIN; m+=60){
+    html += `<div class="hcal-hour-label" style="top:${(m-TIMELINE_INICIO)*PX_POR_MIN}px;">${String(Math.floor((m%1440)/60)).padStart(2,"0")}:00</div>`;
+  }
+  html += `</div>`;
+
+  const ahora = new Date();
+  const minutosAhora = ahora.getHours()*60 + ahora.getMinutes();
+
+  eventosPorDia.forEach(({diaIso, conHora})=>{
+    html += `<div class="hcal-day-col ${diaIso===hoyIso?'today':''}" style="height:${ALTO_TOTAL}px;">`;
+    for(let m=TIMELINE_INICIO; m<=TIMELINE_FIN; m+=60){
+      html += `<div class="hcal-hour-line" style="top:${(m-TIMELINE_INICIO)*PX_POR_MIN}px;"></div>`;
+    }
+    if(diaIso===hoyIso && minutosAhora>=TIMELINE_INICIO && minutosAhora<=TIMELINE_FIN){
+      html += `<div class="hcal-now-line" style="top:${(minutosAhora-TIMELINE_INICIO)*PX_POR_MIN}px;"></div>`;
+    }
+    conHora.forEach(({id,ev,_inicio,_fin,_carril,_totalCarriles})=>{
+      const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
+      const cubierto = nTec>0;
+      const top = (_inicio-TIMELINE_INICIO)*PX_POR_MIN;
+      const alto = Math.max(16, (_fin-_inicio)*PX_POR_MIN);
+      const ancho = 100/_totalCarriles;
+      const izq = ancho*_carril;
+      html += `<div class="hcal-event ${cubierto?'':'sin-cubrir'} ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="top:${top}px;height:${alto}px;left:${izq}%;width:calc(${ancho}% - 2px);background:${cubierto?colorFor(ev.calendario):'#fff'};" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">
+        <span class="hcal-event-time">${fmtHora(ev.start)}</span>
+        <span class="hcal-event-title">${ev.summary}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div></div>`;
 
   const cont = document.getElementById(containerId);
   cont.innerHTML = html;
@@ -1571,15 +1694,17 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
     cont.querySelectorAll("[data-event-id]").forEach(card=>{
       card.addEventListener("click", ()=>{
         eventoSeleccionado = card.dataset.eventId; editandoTecnicoId = null;
-        if(containerId==="sincubrirWeek"){
-          document.querySelector('nav.tabs button[data-tab="asignar"]').click();
-        } else {
-          document.getElementById("asignarDetalleCard").classList.remove("hidden");
-          renderAsignarDetalle(eventoSeleccionado);
-          renderWeekGrid("asignarWeek", "asignar");
-        }
+        document.getElementById("asignarDetalleCard").classList.remove("hidden");
+        renderAsignarDetalle(eventoSeleccionado);
       });
     });
+  }
+  // Centrar el scroll vertical inicial sobre la hora actual (o mediodía si no es hoy la semana visible)
+  const bodyEl = document.getElementById(`${containerId}-body`);
+  if(bodyEl && !bodyEl.dataset.scrolled){
+    bodyEl.dataset.scrolled = "1";
+    const centroMin = (dias.some(d=>isoDate(d)===hoyIso)) ? minutosAhora : 12*60;
+    bodyEl.scrollTop = Math.max(0, (centroMin-TIMELINE_INICIO)*PX_POR_MIN - 200);
   }
 }
 
