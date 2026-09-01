@@ -1819,12 +1819,32 @@ function detectarCambioHorarioEvento(id, eventoAntiguo, eventoNuevo){
   if(!eventoAntiguo || !asign || Object.keys(asign).length===0) return null;
   if(eventoAntiguo.start === eventoNuevo.start && eventoAntiguo.end === eventoNuevo.end) return null;
   const tecnicos = Object.keys(asign).map(tid=> STATE.tecnicos[tid]?.nombre).filter(Boolean);
+
+  // Además de avisar de que ha cambiado de horario, comprobamos si esa nueva fecha/hora choca con
+  // otra cosa que el técnico ya tuviera asignada ese mismo día (misma comprobación que se hace al
+  // asignar a mano), para no depender de que alguien se dé cuenta mirando Vista técnico.
+  const fechaNuevaIso = (eventoNuevo.start||"").slice(0,10);
+  const conflictosPorTecnico = [];
+  if(fechaNuevaIso && eventoNuevo.start && eventoNuevo.start.includes("T")){
+    const horarioNuevoTxt = `${fmtHora(eventoNuevo.start)}–${fmtHora(eventoNuevo.end)}`;
+    Object.entries(asign).forEach(([tid, datos])=>{
+      const horarioTecnico = datos.horario || horarioNuevoTxt;
+      const conflictos = obtenerConflictosHorario(tid, id, fechaNuevaIso, horarioTecnico);
+      if(conflictos.length){
+        conflictosPorTecnico.push({
+          tecnico: STATE.tecnicos[tid]?.nombre || tid,
+          conflictos: conflictos.map(c=>`"${c.evento.summary}" (${c.horario})`)
+        });
+      }
+    });
+  }
+
   return {
     eventId: id, tipo:"horario",
     resumen: eventoNuevo.summary || eventoAntiguo.summary || "(sin título)",
     calendario: eventoAntiguo.calendario,
     fechaAntigua: eventoAntiguo.start, fechaNueva: eventoNuevo.start,
-    tecnicos, creado: Date.now()
+    tecnicos, conflictosPorTecnico, creado: Date.now()
   };
 }
 /* Igual que la anterior, pero para cuando el evento ha desaparecido del todo del calendario
@@ -2607,11 +2627,18 @@ function renderAvisosCambios(){
     const detalle = av.tipo==="eliminado"
       ? `Se ha borrado o cancelado en Calendar. Estaba el ${fmtFecha(av.fechaAntigua)} a las ${fmtHora(av.fechaAntigua)}.`
       : `Ha cambiado de ${fmtFecha(av.fechaAntigua)} ${fmtHora(av.fechaAntigua)} a ${fmtFecha(av.fechaNueva)} ${fmtHora(av.fechaNueva)}.`;
+    const conflictosHtml = (av.conflictosPorTecnico && av.conflictosPorTecnico.length) ? `
+      <div style="margin-top:6px;padding:6px 10px;background:#FDE7E1;border-radius:6px;color:#7A2E1D;font-size:12px;">
+        ⚠️ <strong>Choca con otra asignación en la nueva fecha:</strong><br>
+        ${av.conflictosPorTecnico.map(c=>`${c.tecnico} ya tiene ${c.conflictos.join(", ")}`).join("<br>")}
+      </div>
+    ` : "";
     return `<div class="event-row">
       <div class="event-fecha">${av.tipo==="eliminado"?"🗑️":"🔄"}</div>
       <div style="flex:1;">
         <strong>${av.resumen}</strong> · ${CALENDARIOS[av.calendario]?.nombre || av.calendario}<br>
         <span class="muted">${detalle} Asignado a: ${tecnicosTxt}.</span>
+        ${conflictosHtml}
       </div>
       ${av.tipo!=="eliminado" && STATE.eventos[av.eventId] ? `<button class="btn btn-teal" data-ver-aviso="${id}">Ver evento</button>` : ""}
       <button class="btn btn-ghost" data-descartar-aviso="${id}">Descartar</button>
