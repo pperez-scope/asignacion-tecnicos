@@ -307,6 +307,13 @@
     font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
     font-size:18px;color:var(--navy);
   }
+  .filtro-calendarios-wrap{position:relative;}
+  .filtro-calendarios-panel{
+    position:absolute;top:calc(100% + 6px);left:0;z-index:20;
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 4px 16px rgba(0,0,0,.12);
+    padding:10px 12px;min-width:220px;max-width:280px;
+  }
   .week-grid{
     display:grid;
     grid-template-columns:repeat(7,minmax(120px,1fr));
@@ -1109,6 +1116,19 @@ const CALENDARIOS_INICIALES = {
   icalExterno: { nombre: "Producción Scope", tipo: "google", calendarId: "elbsngara0lfeufikgje3d6o5j8sbv08@import.calendar.google.com", soloLectura: true }
 };
 let CALENDARIOS = {};
+/* Calendarios que este usuario ha decidido ocultar de su propia vista de Calendarios/Sin cubrir.
+   Se guarda solo en este navegador (localStorage), nunca en Firebase — es una preferencia
+   personal de cada persona, no una configuración compartida que afecte a los demás. */
+function obtenerCalendariosOcultos(){
+  try{ return JSON.parse(localStorage.getItem("calendariosOcultos") || "[]"); }
+  catch(e){ return []; }
+}
+function guardarCalendariosOcultos(lista){
+  try{ localStorage.setItem("calendariosOcultos", JSON.stringify(lista)); }catch(e){}
+}
+function calendarioVisible(clave){
+  return !obtenerCalendariosOcultos().includes(clave);
+}
 
 const TECNICOS_INICIALES = [
   "Álvaro Caletrio","Helena Trigueros","Carlota Falcó","Maca Cervantes","Marta Muñoz",
@@ -1417,9 +1437,22 @@ let ultimoDiaClicadoAusencia = null; // para el mayús+clic (seleccionar un rang
 /* Construye el selector Semana/Mes de Calendarios (se integra junto a la fecha en la propia
    barra de navegación, tanto en la vista semanal como en la mensual). */
 function segmentoVistaAsignarHTML(){
+  const ocultos = obtenerCalendariosOcultos();
   return `<div class="segmented segmented-compact" id="asignacionesModoSwitch">
     <button data-modo="semana" class="${asignacionesModo==="semana"?"active":""}">Semana</button>
     <button data-modo="mes" class="${asignacionesModo==="mes"?"active":""}">Mes</button>
+  </div>
+  <div class="filtro-calendarios-wrap">
+    <button class="btn btn-ghost" id="btnFiltroCalendarios" type="button">🎛️ Calendarios${ocultos.length?` (${ocultos.length} oculto${ocultos.length>1?"s":""})`:""}</button>
+    <div class="filtro-calendarios-panel hidden" id="panelFiltroCalendarios">
+      <p class="muted" style="margin:0 0 8px;">Solo afecta a tu propia vista, en este navegador.</p>
+      ${Object.entries(CALENDARIOS).map(([clave,info])=>`
+        <label style="display:flex;align-items:center;gap:6px;padding:4px 0;">
+          <input type="checkbox" data-cal-clave="${clave}" ${!ocultos.includes(clave)?"checked":""}>
+          ${info.nombre}
+        </label>
+      `).join("") || `<p class="muted" style="margin:0;">No hay calendarios configurados.</p>`}
+    </div>
   </div>`;
 }
 function wireSegmentoVistaAsignar(cont){
@@ -1429,11 +1462,33 @@ function wireSegmentoVistaAsignar(cont){
       render();
     });
   });
+  const btnFiltro = cont.querySelector("#btnFiltroCalendarios");
+  const panelFiltro = cont.querySelector("#panelFiltroCalendarios");
+  if(btnFiltro && panelFiltro){
+    btnFiltro.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      panelFiltro.classList.toggle("hidden");
+    });
+    panelFiltro.addEventListener("click", (e)=> e.stopPropagation());
+    panelFiltro.querySelectorAll("[data-cal-clave]").forEach(chk=>{
+      chk.addEventListener("change", ()=>{
+        const ocultos = obtenerCalendariosOcultos();
+        const clave = chk.dataset.calClave;
+        const nuevos = chk.checked ? ocultos.filter(c=>c!==clave) : [...ocultos, clave];
+        guardarCalendariosOcultos(nuevos);
+        render();
+      });
+    });
+  }
 }
+document.addEventListener("click", ()=>{
+  const panel = document.getElementById("panelFiltroCalendarios");
+  if(panel) panel.classList.add("hidden");
+});
 
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
   const weekStart = weekState[weekKey];
-  const todosEventos = Object.entries(STATE.eventos);
+  const todosEventos = Object.entries(STATE.eventos).filter(([,ev])=> calendarioVisible(ev.calendario));
   const eventosFiltrados = onlySinCubrir
     ? todosEventos.filter(([id])=> !STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0)
     : todosEventos;
@@ -2622,7 +2677,7 @@ function renderAsignarMes(mesValue){
   for(let day=1; day<=diasEnMes; day++){
     const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
     const eventosDia = Object.entries(STATE.eventos)
-      .filter(([,ev])=> (ev.start||"").slice(0,10) === fechaIso)
+      .filter(([,ev])=> (ev.start||"").slice(0,10) === fechaIso && calendarioVisible(ev.calendario))
       .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
     const contenido = eventosDia.map(([id,ev])=>{
       const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
