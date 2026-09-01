@@ -1307,7 +1307,7 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/calendar.events");
-provider.setCustomParameters({ prompt: "consent" });
+provider.setCustomParameters({ prompt: "select_account" });
 
 let currentUser = null;
 let accessToken = null;
