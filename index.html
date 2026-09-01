@@ -1323,12 +1323,18 @@ function slugify(str){
 function initials(nombre){
   return nombre.split(" ").filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase();
 }
+// Claves de calendarios antiguos que se han borrado tras migrar/renombrar a uno nuevo. Los
+// eventos y asignaciones históricos conservan la clave vieja, así que se tratan como el mismo
+// calendario que el nuevo a efectos de color y de leyenda, para que no cambien de aspecto.
+const ALIAS_CALENDARIOS_ANTIGUOS = {
+  icalExterno: "produccionscp",   // antiguo "Producción Scope" por iCal → migrado a Google
+  formacion: "formacion-scope"    // antiguo "formación" → renombrado a "Formación SCOPE"
+};
+function claveCalendarioReal(key){
+  return ALIAS_CALENDARIOS_ANTIGUOS[key] || key;
+}
 function colorFor(key){
-  // "icalExterno" era la clave del antiguo calendario de Producción Scope importado por iCal
-  // (de solo lectura). Se migró a Google Calendar como "ProducciónSCP" y se borró aquella
-  // configuración, pero los eventos y asignaciones de entonces conservan esa clave antigua — se
-  // tratan como el mismo calendario a efectos de color, para que no cambien de aspecto.
-  if(key==="icalExterno") key="produccionscp";
+  key = claveCalendarioReal(key);
   const nombreCalendario = CALENDARIOS[key]?.nombre;
   if(nombreCalendario){
     const fijo = COLOR_CALENDARIO_POR_NOMBRE[nombreCalendario.trim().toLowerCase()];
@@ -4071,7 +4077,7 @@ function renderVistaGeneral(){
       const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
       let hayAlgoQueEditar = false;
       if(ausencia){
-        const calAsociadoReal = ausencia.calendarioAsociado==="icalExterno" ? "produccionscp" : ausencia.calendarioAsociado;
+        const calAsociadoReal = claveCalendarioReal(ausencia.calendarioAsociado);
         if(calAsociadoReal && CALENDARIOS[calAsociadoReal]){
           color = colorFor(calAsociadoReal);
           clientesUsados.add(calAsociadoReal);
@@ -4084,7 +4090,7 @@ function renderVistaGeneral(){
       } else if(eventosDia.length){
         const ev = eventosDia[0][1];
         color = colorFor(ev.calendario);
-        clientesUsados.add(ev.calendario==="icalExterno" ? "produccionscp" : ev.calendario);
+        clientesUsados.add(claveCalendarioReal(ev.calendario));
         titulo = ev.summary;
         hayAlgoQueEditar = true;
       } else if(noLaborable){
