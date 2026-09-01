@@ -194,6 +194,7 @@
     padding:4px 0;cursor:pointer;
   }
   .submenu-calendarios input[type="checkbox"]{width:auto;margin:0;}
+  .submenu-cal-color{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
   .submenu-calendarios .muted{color:#8FA6A3;font-size:10.5px;margin:0 0 4px;}
   .tab-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
   .tab-badge{
@@ -1143,10 +1144,10 @@ function renderSubmenuCalendarios(){
   const ocultos = obtenerCalendariosOcultos();
   const entradas = Object.entries(CALENDARIOS);
   cont.innerHTML = `
-    <p class="muted">Solo afecta a tu vista, en este navegador</p>
     ${entradas.map(([clave,info])=>`
       <label>
         <input type="checkbox" data-cal-clave="${clave}" ${!ocultos.includes(clave)?"checked":""}>
+        <span class="submenu-cal-color" style="background:${colorFor(clave)};"></span>
         ${info.nombre}
       </label>
     `).join("") || `<p class="muted">No hay calendarios configurados.</p>`}
