@@ -2359,6 +2359,32 @@ async function actualizarDescripcionEvento(eventId){
   );
   await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
 }
+/* Guarda la parte "original" de la descripción (la que ve y edita el usuario en la app),
+   conservando intacto el bloque de técnicos asignados que la app gestiona aparte, y lo escribe
+   de vuelta en Google Calendar cuando el calendario tiene permiso de escritura. */
+async function guardarDescripcionGoogle(eventId, textoNuevo){
+  const evento = STATE.eventos[eventId];
+  if(!evento) return;
+  const reBloque = new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`);
+  const matchBloque = (evento.description || "").match(reBloque);
+  const bloqueActual = matchBloque ? matchBloque[0] : "";
+  const textoLimpio = textoNuevo.trim();
+  const nuevaDescripcion = bloqueActual
+    ? (textoLimpio ? textoLimpio+"\n\n" : "") + bloqueActual
+    : textoLimpio;
+
+  if(!evento.calendarId || evento.soloLectura){
+    await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
+    toast("Guardado en la app (este calendario es de solo lectura, no se puede escribir en Google)");
+    return;
+  }
+  await calendarFetch(
+    `calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}?sendUpdates=none`,
+    { method:"PATCH", body: JSON.stringify({ description: nuevaDescripcion }) }
+  );
+  await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
+  toast("Guardado en Google Calendar");
+}
 
 /* ---------- ASIGNACIÓN ---------- */
 async function guardarNotaEvento(eventId, texto){
@@ -2975,10 +3001,16 @@ function renderAsignarDetalle(eventId){
     ` : (evento.modalidad ? `
     <p class="muted" style="margin:0 0 12px;">${textoModalidad(evento.modalidad)}</p>
     ` : "")}
-    ${descripcionGoogle ? `
+    ${(descripcionGoogle || isAdmin) ? `
     <div class="field">
       <label>Descripción en Google Calendar</label>
+      ${isAdmin ? `
+      <textarea id="descGoogleEvento" rows="3" placeholder="Se guarda también en el evento original de Google Calendar…">${descripcionGoogle.replace(/</g,"&lt;")}</textarea>
+      <button class="btn btn-ghost" id="btnGuardarDescGoogle" style="margin-top:6px;">${(!evento.calendarId || evento.soloLectura) ? "Guardar en la app" : "Guardar en Google Calendar"}</button>
+      ${(!evento.calendarId || evento.soloLectura) ? `<p class="muted" style="margin-top:4px;">Este calendario es de solo lectura: se guarda en la app, pero no se puede escribir de vuelta en Google Calendar.</p>` : ""}
+      ` : `
       <p style="margin:0;padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:7px;white-space:pre-wrap;font-size:13px;">${descripcionGoogle.replace(/</g,"&lt;")}</p>
+      `}
     </div>
     ` : ""}
     <div class="field">
@@ -3017,6 +3049,12 @@ function renderAsignarDetalle(eventId){
   if(btnGuardarNota){
     btnGuardarNota.addEventListener("click", ()=>{
       guardarNotaEvento(eventId, document.getElementById("notaEvento").value);
+    });
+  }
+  const btnGuardarDescGoogle = document.getElementById("btnGuardarDescGoogle");
+  if(btnGuardarDescGoogle){
+    btnGuardarDescGoogle.addEventListener("click", ()=>{
+      guardarDescripcionGoogle(eventId, document.getElementById("descGoogleEvento").value);
     });
   }
 
