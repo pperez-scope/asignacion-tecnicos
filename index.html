@@ -1378,6 +1378,14 @@ function isoDate(d){
   return `${y}-${m}-${day}`;
 }
 function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+/* Descripción tal cual está en Google Calendar, quitando el bloque de técnicos asignados que la
+   app añade automáticamente al final (para no duplicar esa información, que ya se ve arriba en
+   los chips de técnicos asignados). */
+function descripcionOriginalGoogle(evento){
+  return (evento.description || "")
+    .replace(new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`), "")
+    .trim();
+}
 
 /* Semana (lunes a domingo) */
 function startOfWeek(d){
@@ -2762,6 +2770,7 @@ function renderAsignarDetalle(eventId){
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
   const notaActual = evento.notaInterna || "";
+  const descripcionGoogle = descripcionOriginalGoogle(evento);
 
   const editando = editandoTecnicoId && asign[editandoTecnicoId];
   let formAsignacionHtml = "";
@@ -2966,8 +2975,14 @@ function renderAsignarDetalle(eventId){
     ` : (evento.modalidad ? `
     <p class="muted" style="margin:0 0 12px;">${textoModalidad(evento.modalidad)}</p>
     ` : "")}
+    ${descripcionGoogle ? `
     <div class="field">
-      <label>Descripción del evento</label>
+      <label>Descripción en Google Calendar</label>
+      <p style="margin:0;padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:7px;white-space:pre-wrap;font-size:13px;">${descripcionGoogle.replace(/</g,"&lt;")}</p>
+    </div>
+    ` : ""}
+    <div class="field">
+      <label>Nota interna de la app</label>
       <textarea id="notaEvento" rows="2" placeholder="Notas internas: material especial, punto de encuentro, contacto in situ…" ${isAdmin?"":"disabled"}>${notaActual}</textarea>
       ${isAdmin?`<button class="btn btn-ghost" id="btnGuardarNota" style="margin-top:6px;">Guardar descripción</button>`:""}
       ${evento.notaInterna ? `
