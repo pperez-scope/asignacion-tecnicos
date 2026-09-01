@@ -1307,7 +1307,8 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 const provider = new GoogleAuthProvider();
 provider.addScope("https://www.googleapis.com/auth/calendar.events");
-provider.setCustomParameters({ prompt: "select_account" });
+// El parámetro prompt/login_hint se fija justo antes de cada intento de conexión, dentro de
+// doLogin(), según si ya conocemos la última cuenta de Google usada en este navegador.
 
 let currentUser = null;
 let accessToken = null;
@@ -1591,6 +1592,14 @@ document.getElementById("authBox").addEventListener("click", (e)=>{
 
 async function doLogin(){
   try{
+    // Si ya sabemos con qué cuenta se conectó la última vez en este navegador, se lo indicamos a
+    // Google directamente (login_hint) para que salte también el selector de cuenta, no solo la
+    // pantalla de permisos. Si Google no puede resolverlo solo, sigue mostrando el selector con
+    // normalidad — no es una promesa, es un atajo cuando es posible.
+    let ultimaCuenta = "";
+    try{ ultimaCuenta = localStorage.getItem("ultimaCuentaGoogleAdmin") || ""; }catch(e){}
+    provider.setCustomParameters(ultimaCuenta ? { login_hint: ultimaCuenta } : { prompt: "select_account" });
+
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if(!credential || !credential.accessToken){
@@ -1598,6 +1607,9 @@ async function doLogin(){
       return;
     }
     accessToken = credential.accessToken;
+    if(result.user?.email){
+      try{ localStorage.setItem("ultimaCuentaGoogleAdmin", result.user.email); }catch(e){}
+    }
     toast("Conectado con Google Calendar");
     renderAuthBox();
     iniciarAutoSync();
