@@ -2454,7 +2454,7 @@ async function desasignarTecnico(eventId, tecnicoId){
 }
 
 /* ---------- AUSENCIAS ---------- */
-function construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado){
+function construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo){
   const entrada = { tipo };
   if(horario) entrada.horario = horario;
   if(nota) entrada.nota = nota;
@@ -2463,14 +2463,15 @@ function construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsig
   if(lugar) entrada.lugar = lugar;
   if(sala) entrada.sala = sala;
   if(calendarioAsociado) entrada.calendarioAsociado = calendarioAsociado;
+  if(titulo) entrada.titulo = titulo;
   return entrada;
 }
-async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado){
+async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo){
   const updates = {};
   let d = new Date(fechaInicio);
   const fin = new Date(fechaFin || fechaInicio);
   while(d <= fin){
-    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado);
+    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo);
     d.setDate(d.getDate()+1);
   }
   await update(ref(db), updates);
@@ -2478,11 +2479,11 @@ async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota
 }
 /* Igual que addAusencia, pero para una lista de fechas sueltas (no correlativas),
    por ejemplo varios días de teletrabajo alternos en el mismo mes. */
-async function addAusenciaVariasFechas(tecnicoId, fechas, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado){
+async function addAusenciaVariasFechas(tecnicoId, fechas, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo){
   if(!fechas.length) return;
   const updates = {};
   fechas.forEach(fecha=>{
-    updates[`ausencias/${tecnicoId}/${fecha}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado);
+    updates[`ausencias/${tecnicoId}/${fecha}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo);
   });
   await update(ref(db), updates);
   toast(`Guardado en ${fechas.length} día${fechas.length>1?"s":""}`);
@@ -2528,7 +2529,7 @@ function obtenerLibranzasPendientes(){
       if(!["teletrabajo","manual","mites"].includes(datos.tipo)) return;
       if(!esFindeOFestivo(fecha)) return;
       if(datos.libranzaCompensatoria) return;
-      pendientes.push({ origen:"ausencia", tid, fechaTrabajada:fecha, etiqueta:AUSENCIA_LABELS[datos.tipo] });
+      pendientes.push({ origen:"ausencia", tid, fechaTrabajada:fecha, etiqueta: datos.tipo==="manual" && datos.titulo ? datos.titulo : AUSENCIA_LABELS[datos.tipo] });
     });
   });
   pendientes.sort((a,b)=> new Date(a.fechaTrabajada) - new Date(b.fechaTrabajada));
@@ -3522,7 +3523,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
   let baseRangos = [], baseLabel = "", baseColor = "", baseDescanso = null, baseLugar = "", baseSala = "", baseTipoAsignacion = "";
   if(ausencia && (ausencia.tipo==="oficina"||ausencia.tipo==="manual"||ausencia.tipo==="teletrabajo"||ausencia.tipo==="mites") && ausencia.horario){
     baseRangos = parseRangosMultiples(ausencia.horario);
-    baseLabel = AUSENCIA_LABELS[ausencia.tipo];
+    baseLabel = ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo];
     baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : (AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO);
     baseDescanso = ausencia.descansoMinutos || null;
     baseLugar = ausencia.lugar || "";
@@ -3530,7 +3531,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     baseTipoAsignacion = ausencia.tipoAsignacion || "";
   } else if(ausencia){
     // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
-    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
+    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label: ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
     return segmentos;
   } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
     baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
@@ -3926,6 +3927,12 @@ function renderEditorDiaTecnico(){
         </select>
       </div>
     </div>
+    <div class="row hidden" id="editorDiaTituloRow">
+      <div class="field">
+        <label>Título</label>
+        <input type="text" id="editorDiaTitulo" value="${base.titulo||""}" placeholder="Ej: Grabación evento privado">
+      </div>
+    </div>
     <div class="row hidden" id="editorDiaTipoAsignacionRow">
       <div class="field">
         <label>Tipo de asignación</label>
@@ -3987,6 +3994,7 @@ function renderEditorDiaTecnico(){
   const lugarRow = document.getElementById("editorDiaLugarRow");
   const descansoRow = document.getElementById("editorDiaDescansoRow");
   const tipoAsigRow = document.getElementById("editorDiaTipoAsignacionRow");
+  const tituloRow = document.getElementById("editorDiaTituloRow");
   const notaRow = document.getElementById("editorDiaNotaRow");
   const horarioInput = document.getElementById("editorDiaHorario");
   const chkDescanso = document.getElementById("editorDiaDescansoActivo");
@@ -4008,6 +4016,7 @@ function renderEditorDiaTecnico(){
     lugarRow.classList.toggle("hidden", !necesitaLugar);
     descansoRow.classList.toggle("hidden", !necesitaHorario);
     tipoAsigRow.classList.toggle("hidden", !necesitaLugar);
+    tituloRow.classList.toggle("hidden", tipo!=="manual");
     notaRow.classList.toggle("hidden", false); // la nota está disponible para cualquier categoría (útil para anotar a qué día compensa una libranza, por ejemplo)
     document.getElementById("editorDiaNota").placeholder = tipo==="libranza"
       ? "Ej: Compensación por exceso de horas en la jornada del 12/08"
@@ -4037,10 +4046,12 @@ function renderEditorDiaTecnico(){
     const sala = necesitaLugar ? document.getElementById("editorDiaSala").value : "";
     const calendarioAsociado = necesitaLugar ? (document.getElementById("editorDiaCalendarioAsociado")?.value || "") : "";
     const nota = document.getElementById("editorDiaNota").value;
+    const titulo = tipo==="manual" ? document.getElementById("editorDiaTitulo").value.trim() : "";
     const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
     const tipoAsignacion = necesitaLugar ? document.getElementById("editorDiaTipoAsignacion").value : "";
     if(necesitaLugar && !tipoAsignacion) return toast("Elige el tipo de asignación");
-    addAusencia(tecnicoId, fechaIso, fechaIso, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado);
+    if(tipo==="manual" && !titulo) return toast("Escribe un título para la asignación manual");
+    addAusencia(tecnicoId, fechaIso, fechaIso, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo);
     cerrarEditorDiaTecnico();
   });
 
@@ -4146,10 +4157,10 @@ function renderVistaGeneral(){
         if(calAsociadoReal && CALENDARIOS[calAsociadoReal]){
           color = colorFor(calAsociadoReal);
           clientesUsados.add(calAsociadoReal);
-          titulo = `${AUSENCIA_LABELS[ausencia.tipo]} · ${CALENDARIOS[calAsociadoReal].nombre}`;
+          titulo = `${ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo]} · ${CALENDARIOS[calAsociadoReal].nombre}`;
         } else {
           color = AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO;
-          titulo = AUSENCIA_LABELS[ausencia.tipo];
+          titulo = ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo];
         }
         hayAlgoQueEditar = true;
       } else if(eventosDia.length){
@@ -4267,6 +4278,12 @@ function renderAusencias(){
           <option value="manual">Asignación manual</option>
         </select>
       </div>
+      <div class="row hidden" id="ausTituloRow">
+        <div class="field">
+          <label>Título</label>
+          <input type="text" id="ausTitulo" placeholder="Ej: Grabación evento privado">
+        </div>
+      </div>
       <div class="row hidden" id="ausTipoAsignacionRow">
         <div class="field">
           <label>Tipo de asignación</label>
@@ -4367,6 +4384,7 @@ function renderAusencias(){
       horarioRow.classList.toggle("hidden", !necesitaHorario);
       descansoRow.classList.toggle("hidden", !necesitaHorario);
       tipoAsignacionRow.classList.toggle("hidden", !necesitaHorario);
+      document.getElementById("ausTituloRow").classList.toggle("hidden", tipo!=="manual");
       lugarRow.classList.toggle("hidden", !necesitaLugar);
       lugarRow2.classList.toggle("hidden", !necesitaLugar);
       notaRow.classList.toggle("hidden", false); // la nota está disponible para cualquier categoría (útil para anotar a qué día compensa una libranza, por ejemplo)
@@ -4478,6 +4496,7 @@ function renderAusencias(){
       const necesitaLugar = tipo==="oficina"||tipo==="manual"||tipo==="mites";
       const horario = necesitaHorario ? horarioInput.value : "";
       const nota = document.getElementById("ausNota").value;
+      const titulo = tipo==="manual" ? document.getElementById("ausTitulo").value.trim() : "";
       const descansoMinutos = (necesitaHorario && chkDescanso.checked) ? (parseInt(minutosDescanso.value,10) || 0) : null;
       const tipoAsignacion = necesitaHorario ? tipoAsignacionSelect.value : "";
       const lugar = necesitaLugar ? lugarInput.value : "";
@@ -4486,8 +4505,9 @@ function renderAusencias(){
       if(!tid) return toast("Falta el técnico");
       if(fechasSeleccionadasAusencia.length===0) return toast("Añade al menos un día a la lista");
       if(necesitaHorario && !tipoAsignacion) return toast("Elige el tipo de asignación");
+      if(tipo==="manual" && !titulo) return toast("Escribe un título para la asignación manual");
       ultimoTecnicoAusenciasForm = tid;
-      addAusenciaVariasFechas(tid, [...fechasSeleccionadasAusencia], tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado);
+      addAusenciaVariasFechas(tid, [...fechasSeleccionadasAusencia], tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo);
       fechasSeleccionadasAusencia = [];
       renderChipsAusencia();
     });
@@ -4521,7 +4541,7 @@ function renderAusencias(){
     <div class="event-row">
       <div class="event-fecha">${fecha}</div>
       <div style="flex:1;">
-        ${AUSENCIA_LABELS[datos.tipo] || datos.tipo}
+        ${datos.tipo==="manual" && datos.titulo ? datos.titulo : (AUSENCIA_LABELS[datos.tipo] || datos.tipo)}
         ${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}
         ${datos.horario?` · ${datos.horario}`:""}
         ${(datos.lugar||datos.sala)?` · 📍 ${[datos.lugar,datos.sala].filter(Boolean).join(" · ")}`:""}
@@ -4582,6 +4602,8 @@ function renderAusencias(){
       if(elDescansoMinutos && datos.descansoMinutos) elDescansoMinutos.value = datos.descansoMinutos;
       if(elNota) elNota.value = datos.nota || "";
       if(elCalAsociado) elCalAsociado.value = datos.calendarioAsociado || "";
+      const elTitulo = document.getElementById("ausTitulo");
+      if(elTitulo) elTitulo.value = datos.titulo || "";
 
       toast(`Editando la entrada del ${fecha}. Cambia lo que necesites y pulsa Guardar.`);
       document.getElementById("ausenciasForm").scrollIntoView({ behavior:"smooth", block:"start" });
