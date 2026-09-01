@@ -184,7 +184,6 @@
   }
   nav.tabs button.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--amber);}
   .submenu-calendarios{
-    flex-basis:100%;
     padding:4px 10px 8px 40px;
     display:flex;flex-direction:column;gap:2px;
   }
@@ -241,6 +240,7 @@
     nav.tabs{display:contents;}
     nav.tabs button{flex:0 0 auto;padding:8px 10px;}
     nav.tabs button.active{background:rgba(0,0,0,.06);border-bottom-color:var(--amber);}
+    .submenu-calendarios{flex-basis:100%;}
     .auth-box{display:contents;}
     .auth-box > *{flex:0 0 auto;}
     .auth-box .btn{padding:5px 10px;font-size:12px;}
@@ -1248,17 +1248,22 @@ const MARKER_START = "--- Técnicos asignados (no editar a mano, se actualiza so
 const MARKER_END = "--- fin técnicos ---";
 
 const COLOR_PALETTE = ["#E65D2B","#479F9A","#F0AB85","#2E6B66","#C77A4E","#7FBFB9","#B0533C","#5C8F8B"];
-const AUSENCIA_COLORS = { libranza:"#4DAE5B", permiso:"#3FB8A6", vacaciones:"#D6453B", oficina:"#E8A23D", manual:"#8F7CC7", teletrabajo:"#4A7FC9", mites:"#8E5FC7", bajaMedica:"#9AA0A6" };
+const AUSENCIA_COLORS = { libranza:"#4DAE5B", permiso:"#A9DDB0", vacaciones:"#D6453B", oficina:"#E8A23D", teletrabajo:"#4A7FC9", mites:"#5B2C82", bajaMedica:"#9AA0A6" };
 const AUSENCIA_LABELS = { libranza:"Libranza", permiso:"Permiso", vacaciones:"Vacaciones", oficina:"Oficina Scope", manual:"Asignación manual", teletrabajo:"Teletrabajo", mites:"Mites", bajaMedica:"Baja médica" };
 const AUSENCIA_HORARIO_DEFECTO = { oficina:"09:00–18:00" };
+// Color de reserva para una asignación manual que no tenga calendario asociado (caso raro): no
+// tiene entrada propia en AUSENCIA_COLORS ni en la leyenda del Cuadrante a propósito, ya que su
+// color normal se deriva siempre del calendario asociado que elija el admin.
+const COLOR_MANUAL_SIN_CALENDARIO = "#9AA0A6";
 // Colores fijos por nombre de calendario, para que coincidan siempre en Cuadrante y en Calendarios.
 // Si un calendario nuevo no está en esta lista, se le asigna un color automático (colorFor) como hasta ahora.
 const COLOR_CALENDARIO_POR_NOMBRE = {
   "producción scope": "#7B4B2A",
   "producciónscp": "#7B4B2A",
-  "fundación juan march": "#8E5F8E",
+  "fundación juan march": "#7D3C5C",
+  "mantenimiento fjm": "#B894A5",
   "ateneo": "#2CA6A4",
-  "formación": "#E8709A"
+  "formación scope": "#C98A9B"
 };
 
 // Horario de Oficina Scope que se asigna por defecto entre semana cuando el técnico no tiene
@@ -3442,14 +3447,14 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
   if(ausencia && (ausencia.tipo==="oficina"||ausencia.tipo==="manual"||ausencia.tipo==="teletrabajo"||ausencia.tipo==="mites") && ausencia.horario){
     baseRangos = parseRangosMultiples(ausencia.horario);
     baseLabel = AUSENCIA_LABELS[ausencia.tipo];
-    baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : AUSENCIA_COLORS[ausencia.tipo];
+    baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : (AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO);
     baseDescanso = ausencia.descansoMinutos || null;
     baseLugar = ausencia.lugar || "";
     baseSala = ausencia.sala || "";
     baseTipoAsignacion = ausencia.tipoAsignacion || "";
   } else if(ausencia){
     // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
-    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo], nota:ausencia.nota||"" });
+    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label:AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
     return segmentos;
   } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
     baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
@@ -4066,7 +4071,7 @@ function renderVistaGeneral(){
           clientesUsados.add(ausencia.calendarioAsociado);
           titulo = `${AUSENCIA_LABELS[ausencia.tipo]} · ${CALENDARIOS[ausencia.calendarioAsociado].nombre}`;
         } else {
-          color = AUSENCIA_COLORS[ausencia.tipo];
+          color = AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO;
           titulo = AUSENCIA_LABELS[ausencia.tipo];
         }
         hayAlgoQueEditar = true;
@@ -4121,7 +4126,7 @@ function renderVistaGeneral(){
   clientesUsados.forEach(clave=>{
     legend += `<span class="legend-item"><span class="legend-swatch" style="background:${colorFor(clave)};"></span>${CALENDARIOS[clave]?.nombre || clave}</span>`;
   });
-  Object.entries(AUSENCIA_LABELS).forEach(([key,label])=>{
+  Object.entries(AUSENCIA_LABELS).filter(([key])=> key!=="manual").forEach(([key,label])=>{
     legend += `<span class="legend-item"><span class="legend-swatch" style="background:${AUSENCIA_COLORS[key]};"></span>${label}</span>`;
   });
   document.getElementById("generalLegend").innerHTML = legend;
