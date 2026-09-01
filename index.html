@@ -183,6 +183,18 @@
     cursor:pointer;
   }
   nav.tabs button.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--amber);}
+  .submenu-calendarios{
+    flex-basis:100%;
+    padding:4px 10px 8px 40px;
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .submenu-calendarios label{
+    display:flex;align-items:center;gap:7px;
+    color:#C7CFD8;font-size:12px;font-weight:500;
+    padding:4px 0;cursor:pointer;
+  }
+  .submenu-calendarios input[type="checkbox"]{width:auto;margin:0;}
+  .submenu-calendarios .muted{color:#8FA6A3;font-size:10.5px;margin:0 0 4px;}
   .tab-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
   .tab-badge{
     margin-left:auto;
@@ -306,13 +318,6 @@
   .week-range{
     font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
     font-size:18px;color:var(--navy);
-  }
-  .filtro-calendarios-wrap{position:relative;}
-  .filtro-calendarios-panel{
-    position:absolute;top:calc(100% + 6px);left:0;z-index:20;
-    background:#fff;border:1px solid var(--line);border-radius:8px;
-    box-shadow:0 4px 16px rgba(0,0,0,.12);
-    padding:10px 12px;min-width:220px;max-width:280px;
   }
   .week-grid{
     display:grid;
@@ -867,6 +872,7 @@
     <nav class="tabs" id="tabs">
       <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn"><span class="tab-icon">📋</span><span>Sin cubrir</span></button>
       <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span><span class="tab-badge hidden" id="badgeCambiosEventos"></span></button>
+      <div id="submenuCalendarios" class="submenu-calendarios hidden"></div>
       <button data-tab="tecnico"><span class="tab-icon">👤</span><span>Vista técnico</span></button>
       <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span></button>
       <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span><span class="tab-badge hidden" id="badgeLibranzas"></span></button>
@@ -1128,6 +1134,32 @@ function guardarCalendariosOcultos(lista){
 }
 function calendarioVisible(clave){
   return !obtenerCalendariosOcultos().includes(clave);
+}
+/* Rellena el submenú de calendarios que cuelga del botón "Calendarios" en la barra lateral. Se
+   vuelve a llamar cada vez que cambian los calendarios configurados o la pestaña activa. */
+function renderSubmenuCalendarios(){
+  const cont = document.getElementById("submenuCalendarios");
+  if(!cont) return;
+  const ocultos = obtenerCalendariosOcultos();
+  const entradas = Object.entries(CALENDARIOS);
+  cont.innerHTML = `
+    <p class="muted">Solo afecta a tu vista, en este navegador</p>
+    ${entradas.map(([clave,info])=>`
+      <label>
+        <input type="checkbox" data-cal-clave="${clave}" ${!ocultos.includes(clave)?"checked":""}>
+        ${info.nombre}
+      </label>
+    `).join("") || `<p class="muted">No hay calendarios configurados.</p>`}
+  `;
+  cont.querySelectorAll("[data-cal-clave]").forEach(chk=>{
+    chk.addEventListener("change", ()=>{
+      const ocultosActuales = obtenerCalendariosOcultos();
+      const clave = chk.dataset.calClave;
+      const nuevos = chk.checked ? ocultosActuales.filter(c=>c!==clave) : [...ocultosActuales, clave];
+      guardarCalendariosOcultos(nuevos);
+      render();
+    });
+  });
 }
 
 const TECNICOS_INICIALES = [
@@ -1437,22 +1469,9 @@ let ultimoDiaClicadoAusencia = null; // para el mayús+clic (seleccionar un rang
 /* Construye el selector Semana/Mes de Calendarios (se integra junto a la fecha en la propia
    barra de navegación, tanto en la vista semanal como en la mensual). */
 function segmentoVistaAsignarHTML(){
-  const ocultos = obtenerCalendariosOcultos();
   return `<div class="segmented segmented-compact" id="asignacionesModoSwitch">
     <button data-modo="semana" class="${asignacionesModo==="semana"?"active":""}">Semana</button>
     <button data-modo="mes" class="${asignacionesModo==="mes"?"active":""}">Mes</button>
-  </div>
-  <div class="filtro-calendarios-wrap">
-    <button class="btn btn-ghost" id="btnFiltroCalendarios" type="button">🎛️ Calendarios${ocultos.length?` (${ocultos.length} oculto${ocultos.length>1?"s":""})`:""}</button>
-    <div class="filtro-calendarios-panel hidden" id="panelFiltroCalendarios">
-      <p class="muted" style="margin:0 0 8px;">Solo afecta a tu propia vista, en este navegador.</p>
-      ${Object.entries(CALENDARIOS).map(([clave,info])=>`
-        <label style="display:flex;align-items:center;gap:6px;padding:4px 0;">
-          <input type="checkbox" data-cal-clave="${clave}" ${!ocultos.includes(clave)?"checked":""}>
-          ${info.nombre}
-        </label>
-      `).join("") || `<p class="muted" style="margin:0;">No hay calendarios configurados.</p>`}
-    </div>
   </div>`;
 }
 function wireSegmentoVistaAsignar(cont){
@@ -1462,29 +1481,7 @@ function wireSegmentoVistaAsignar(cont){
       render();
     });
   });
-  const btnFiltro = cont.querySelector("#btnFiltroCalendarios");
-  const panelFiltro = cont.querySelector("#panelFiltroCalendarios");
-  if(btnFiltro && panelFiltro){
-    btnFiltro.addEventListener("click", (e)=>{
-      e.stopPropagation();
-      panelFiltro.classList.toggle("hidden");
-    });
-    panelFiltro.addEventListener("click", (e)=> e.stopPropagation());
-    panelFiltro.querySelectorAll("[data-cal-clave]").forEach(chk=>{
-      chk.addEventListener("change", ()=>{
-        const ocultos = obtenerCalendariosOcultos();
-        const clave = chk.dataset.calClave;
-        const nuevos = chk.checked ? ocultos.filter(c=>c!==clave) : [...ocultos, clave];
-        guardarCalendariosOcultos(nuevos);
-        render();
-      });
-    });
-  }
 }
-document.addEventListener("click", ()=>{
-  const panel = document.getElementById("panelFiltroCalendarios");
-  if(panel) panel.classList.add("hidden");
-});
 
 function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=true } = {}){
   const weekStart = weekState[weekKey];
@@ -1630,7 +1627,7 @@ onValue(ref(db,"asignaciones"), (snap)=>{ STATE.asignaciones = snap.val() || {};
 onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; render(); });
 onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
 onValue(ref(db,"avisosCambios"), (snap)=>{ STATE.avisosCambios = snap.val() || {}; render(); });
-onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; render(); });
+onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; renderSubmenuCalendarios(); render(); });
 
 /* ---------- TABS ---------- */
 function cerrarModalAsignacion(){
@@ -1664,6 +1661,7 @@ document.getElementById("tabs").addEventListener("click",(e)=>{
   btn.classList.add("active");
   document.querySelectorAll("main > section").forEach(s=>s.classList.add("hidden"));
   document.getElementById("view-"+btn.dataset.tab).classList.remove("hidden");
+  document.getElementById("submenuCalendarios").classList.toggle("hidden", btn.dataset.tab!=="asignar");
   render();
 });
 function seleccionarTabDesdeHash(){
