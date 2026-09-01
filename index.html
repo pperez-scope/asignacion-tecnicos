@@ -345,10 +345,12 @@
   .hcal-allday-col{
     border-left:1px solid var(--line);padding:2px 3px;
     display:flex;flex-direction:column;gap:2px;
+    min-width:0;
   }
   .hcal-allday-event{
-    font-size:10px;font-weight:600;padding:2px 5px;border-radius:4px;color:#fff;
+    font-size:10px;font-weight:600;padding:2px 5px;border-radius:4px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
+    min-width:0;box-sizing:border-box;
   }
   .hcal-body{display:grid;grid-template-columns:52px repeat(7,1fr);max-height:70vh;overflow-y:auto;position:relative;}
   .hcal-time-col{position:relative;border-right:1px solid var(--line);}
@@ -365,14 +367,17 @@
     border-radius:50%;background:var(--danger);
   }
   .hcal-event{
-    position:absolute;border-radius:5px;border:1px solid rgba(0,0,0,.08);
-    padding:2px 5px;overflow:hidden;cursor:pointer;color:#fff;
+    position:absolute;border-radius:5px;
+    padding:2px 5px;overflow:hidden;cursor:pointer;
     box-sizing:border-box;transition:z-index .01s;
   }
   .hcal-event:hover{z-index:8;box-shadow:0 2px 8px rgba(0,0,0,.25);}
-  .hcal-event.sin-cubrir{background:#fff !important;border:1px dashed var(--ink-soft);color:var(--ink);}
   .hcal-event-time{display:block;font-size:9.5px;font-weight:700;opacity:.9;}
-  .hcal-event-title{display:block;font-size:10.5px;font-weight:600;line-height:1.2;}
+  .hcal-event-title{
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+    overflow:hidden;text-overflow:ellipsis;
+    font-size:10.5px;font-weight:600;line-height:1.2;
+  }
   .hcal-event.selected{outline:2px solid var(--navy);}
   @media (max-width:700px){
     .hcal-header, .hcal-allday-row, .hcal-body{grid-template-columns:38px repeat(7,minmax(70px,1fr));}
@@ -1637,7 +1642,11 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
       html += `<div class="hcal-allday-col">${todoElDia.map(([id,ev])=>{
         const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
         const cubierto = nTec>0;
-        return `<div class="hcal-allday-event ${clickable?'':'no-click'}" style="background:${colorFor(ev.calendario)};${cubierto?'':'outline:2px dashed #fff;outline-offset:-2px;'}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">${ev.summary}</div>`;
+        const colorEvento = colorFor(ev.calendario);
+        const estilo = cubierto
+          ? `background:${colorEvento};color:#fff;`
+          : `background:#fff;color:${colorEvento};border:1.5px dashed ${colorEvento};`;
+        return `<div class="hcal-allday-event ${clickable?'':'no-click'}" style="${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">${ev.summary}</div>`;
       }).join("")}</div>`;
     });
     html += `</div>`;
@@ -1668,7 +1677,11 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
       const alto = Math.max(16, (_fin-_inicio)*PX_POR_MIN);
       const ancho = 100/_totalCarriles;
       const izq = ancho*_carril;
-      html += `<div class="hcal-event ${cubierto?'':'sin-cubrir'} ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="top:${top}px;height:${alto}px;left:${izq}%;width:calc(${ancho}% - 2px);background:${cubierto?colorFor(ev.calendario):'#fff'};" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">
+      const colorEvento = colorFor(ev.calendario);
+      const estilo = cubierto
+        ? `background:${colorEvento};color:#fff;border:1px solid rgba(0,0,0,.08);`
+        : `background:#fff;color:${colorEvento};border:1.5px dashed ${colorEvento};`;
+      html += `<div class="hcal-event ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="top:${top}px;height:${alto}px;left:${izq}%;width:calc(${ancho}% - 2px);${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">
         <span class="hcal-event-time">${fmtHora(ev.start)}</span>
         <span class="hcal-event-title">${ev.summary}</span>
       </div>`;
