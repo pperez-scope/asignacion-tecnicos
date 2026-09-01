@@ -1645,7 +1645,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
         const colorEvento = colorFor(ev.calendario);
         const estilo = cubierto
           ? `background:${colorEvento};color:#fff;`
-          : `background:#fff;color:${colorEvento};border:1.5px dashed ${colorEvento};`;
+          : `background:#fff;color:var(--ink);border:2px dashed ${colorEvento};`;
         return `<div class="hcal-allday-event ${clickable?'':'no-click'}" style="${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">${ev.summary}</div>`;
       }).join("")}</div>`;
     });
@@ -1680,7 +1680,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
       const colorEvento = colorFor(ev.calendario);
       const estilo = cubierto
         ? `background:${colorEvento};color:#fff;border:1px solid rgba(0,0,0,.08);`
-        : `background:#fff;color:${colorEvento};border:1.5px dashed ${colorEvento};`;
+        : `background:#fff;color:var(--ink);border:2px dashed ${colorEvento};`;
       html += `<div class="hcal-event ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="top:${top}px;height:${alto}px;left:${izq}%;width:calc(${ancho}% - 2px);${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">
         <span class="hcal-event-time">${fmtHora(ev.start)}</span>
         <span class="hcal-event-title">${ev.summary}</span>
