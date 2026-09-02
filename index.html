@@ -1035,6 +1035,7 @@
         </div>
       </div>
     </div>
+    <div id="notasTecnicoBanner"></div>
     <div class="card">
       <div id="tecnicoGrid"></div>
     </div>
@@ -1116,6 +1117,35 @@
       </div>
       <div class="two-col-layout-col">
         <h3 class="admin-col-title">Configuración e informes</h3>
+        <div class="card">
+          <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Notas sobre técnicos</h3>
+          <p class="muted" style="margin-top:0;">Apunta aquí circunstancias puntuales de un técnico con fecha (por ejemplo, "del 4 al 8 de octubre prefiere turnos de mañana"). La nota aparecerá sola, destacada, al asignar ese técnico a un evento en esas fechas o al consultar su Vista técnico esa semana — no hace falta que te acuerdes de mirarlo.</p>
+          <div class="row row-compact">
+            <div class="field">
+              <label>Técnico</label>
+              <select id="notaTecnicoSelect"></select>
+            </div>
+          </div>
+          <div class="row row-compact">
+            <div class="field">
+              <label>Desde</label>
+              <input type="date" id="notaTecnicoDesde">
+            </div>
+            <div class="field">
+              <label>Hasta</label>
+              <input type="date" id="notaTecnicoHasta">
+            </div>
+          </div>
+          <div class="row row-compact">
+            <div class="field">
+              <label>Nota</label>
+              <input type="text" id="notaTecnicoTexto" placeholder="Ej: prefiere turnos de mañana, su mujer viaja por trabajo esa semana">
+            </div>
+          </div>
+          <button class="btn btn-amber" id="btnAnadirNotaTecnico">Guardar nota</button>
+          <hr style="border:none;border-top:1px solid var(--line);margin:14px 0;">
+          <div id="listaNotasTecnico"></div>
+        </div>
         <div class="card">
           <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Calendarios</h3>
           <p class="muted" style="margin-top:0;">Añade aquí un nuevo calendario de Google (el ID lo encuentras en Google Calendar → los tres puntos junto al calendario → Configuración y uso compartido → Integrar calendario).</p>
@@ -1390,7 +1420,7 @@ let currentUser = null;
 let accessToken = null;
 let isAdmin = false;
 
-let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{} };
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{} };
 
 /* ---------- HELPERS ---------- */
 function slugify(str){
@@ -1520,6 +1550,58 @@ async function despublicarSemana(lunesIso){
   }
   toast("Semana despublicada");
 }
+function renderNotasTecnico(){
+  const select = document.getElementById("notaTecnicoSelect");
+  if(!select) return;
+  const seleccionActual = select.value;
+  select.innerHTML = Object.entries(STATE.tecnicos).map(([id,t])=>`<option value="${id}">${t.nombre}</option>`).join("");
+  if(seleccionActual && STATE.tecnicos[seleccionActual]) select.value = seleccionActual;
+
+  const lista = document.getElementById("listaNotasTecnico");
+  const todasLasNotas = [];
+  Object.entries(STATE.notasTecnico).forEach(([tid, notas])=>{
+    Object.entries(notas||{}).forEach(([notaId, n])=> todasLasNotas.push({ tid, notaId, ...n }));
+  });
+  todasLasNotas.sort((a,b)=> a.fechaInicio.localeCompare(b.fechaInicio));
+  if(todasLasNotas.length===0){
+    lista.innerHTML = `<p class="muted">No hay notas guardadas todavía.</p>`;
+    return;
+  }
+  const hoyIso = isoDate(new Date());
+  lista.innerHTML = todasLasNotas.map(n=>{
+    const nombreTecnico = STATE.tecnicos[n.tid]?.nombre || n.tid;
+    const vigente = hoyIso >= n.fechaInicio && hoyIso <= n.fechaFin;
+    const pasada = n.fechaFin < hoyIso;
+    return `<div class="event-row" style="opacity:${pasada?0.55:1};">
+      <div class="event-fecha">${fmtFecha(n.fechaInicio)}${n.fechaFin!==n.fechaInicio?` – ${fmtFecha(n.fechaFin)}`:""}</div>
+      <div style="flex:1;">
+        <strong>${nombreTecnico}</strong>${vigente?' <span class="muted" style="color:var(--amber);">· en curso</span>':""}<br>
+        <span class="muted">${n.texto}</span>
+      </div>
+      <button class="btn btn-ghost" data-quitar-nota="${n.tid}|${n.notaId}">Quitar</button>
+    </div>`;
+  }).join("");
+  lista.querySelectorAll("[data-quitar-nota]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const [tid, notaId] = btn.dataset.quitarNota.split("|");
+      quitarNotaTecnico(tid, notaId);
+    });
+  });
+}
+document.getElementById("btnAnadirNotaTecnico").addEventListener("click", ()=>{
+  const tid = document.getElementById("notaTecnicoSelect").value;
+  const desde = document.getElementById("notaTecnicoDesde").value;
+  const hasta = document.getElementById("notaTecnicoHasta").value || desde;
+  const texto = document.getElementById("notaTecnicoTexto").value;
+  if(!tid) return toast("Elige un técnico");
+  if(!desde) return toast("Elige la fecha de inicio");
+  if(hasta < desde) return toast("La fecha de fin no puede ser anterior a la de inicio");
+  if(!texto.trim()) return toast("Escribe el texto de la nota");
+  anadirNotaTecnico(tid, desde, hasta, texto);
+  document.getElementById("notaTecnicoTexto").value = "";
+  document.getElementById("notaTecnicoDesde").value = "";
+  document.getElementById("notaTecnicoHasta").value = "";
+});
 function renderPublicacionSemanas(){
   const cont = document.getElementById("publicacionSemanasList");
   if(!cont) return;
@@ -1854,6 +1936,7 @@ onValue(ref(db,"asignaciones"), (snap)=>{ STATE.asignaciones = snap.val() || {};
 onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; render(); });
 onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
 onValue(ref(db,"avisosCambios"), (snap)=>{ STATE.avisosCambios = snap.val() || {}; render(); });
+onValue(ref(db,"notasTecnico"), (snap)=>{ STATE.notasTecnico = snap.val() || {}; render(); });
 onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; renderSubmenuCalendarios(); render(); });
 
 /* ---------- TABS ---------- */
@@ -2713,6 +2796,29 @@ async function removeAusencia(tecnicoId, fecha){
    ese día (no la sustituye, conviven) cuando es online o cuando ocurre en la propia oficina de
    Scope — en ambos casos el técnico sigue en su sitio habitual. Solo lo presencial (en la sede
    del cliente) ocupa al técnico físicamente en otro lugar y sustituye a la asignación de base. */
+/* ---------- NOTAS SOBRE TÉCNICOS (avisos con fecha, tipo "esta semana prefiere mañanas") ---------- */
+async function anadirNotaTecnico(tecnicoId, fechaInicio, fechaFin, texto){
+  const key = push(ref(db,"notasTecnico")).key;
+  await update(ref(db), { [`notasTecnico/${tecnicoId}/${key}`]: { texto: texto.trim(), fechaInicio, fechaFin: fechaFin||fechaInicio, creado: Date.now() } });
+  toast("Nota guardada");
+}
+async function quitarNotaTecnico(tecnicoId, notaId){
+  await remove(ref(db, `notasTecnico/${tecnicoId}/${notaId}`));
+}
+/* Todas las notas de un técnico cuyo rango de fechas incluye fechaIso (o toda su lista si no se
+   pasa fecha), ordenadas por fecha de inicio. */
+function notasActivasTecnico(tecnicoId, fechaIso){
+  const notas = Object.entries(STATE.notasTecnico[tecnicoId] || {});
+  const filtradas = fechaIso ? notas.filter(([,n])=> fechaIso >= n.fechaInicio && fechaIso <= n.fechaFin) : notas;
+  return filtradas.sort((a,b)=> a[1].fechaInicio.localeCompare(b[1].fechaInicio));
+}
+/* Igual, pero comprobando si el rango de la nota se solapa con un rango de fechas (por ejemplo,
+   la semana o el mes que se está mostrando en Vista técnico), no solo un día concreto. */
+function notasEnRango(tecnicoId, fechaDesde, fechaHasta){
+  const notas = Object.entries(STATE.notasTecnico[tecnicoId] || {});
+  return notas.filter(([,n])=> n.fechaInicio <= fechaHasta && n.fechaFin >= fechaDesde)
+    .sort((a,b)=> a[1].fechaInicio.localeCompare(b[1].fechaInicio));
+}
 function modalidadCompatible(modalidad){
   return modalidad==="online" || modalidad==="oficina";
 }
@@ -2876,7 +2982,7 @@ function render(){
   if(activeTab==="tecnico") renderVistaTecnico();
   if(activeTab==="general") renderVistaGeneral();
   if(activeTab==="ausencias") renderAusencias();
-  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); poblarSelectorInforme(); }
+  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); poblarSelectorInforme(); renderNotasTecnico(); }
 }
 
 let resizeCuadranteTimeout = null;
@@ -3023,11 +3129,14 @@ function renderAsignarDetalle(eventId){
   const asign = STATE.asignaciones[eventId] || {};
 
   const eventoEsFindeFestivo = esFindeOFestivo(evento.start);
+  const fechaEventoIso = (evento.start||"").slice(0,10);
   const asignadosHtml = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre || tid;
     const lugarTxt = [datos.lugar, datos.sala].filter(Boolean).join(" · ");
     const libranzaPendiente = eventoEsFindeFestivo && !datos.libranzaCompensatoria;
-    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}${libranzaPendiente?` · ⚠️ libranza pendiente`:""}
+    const notasTecnicoActivas = notasActivasTecnico(tid, fechaEventoIso);
+    const notaTxt = notasTecnicoActivas.length ? ` · <strong style="color:#7A4A00;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</strong>` : "";
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}${libranzaPendiente?` · ⚠️ libranza pendiente`:""}${notaTxt}
       ${isAdmin?`<button data-editar="${tid}" title="Editar">✎</button><button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
@@ -3116,12 +3225,14 @@ function renderAsignarDetalle(eventId){
     const normalizar = (s)=> s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
     const checklistHtml = tecnicosDisponibles.length
       ? `<input type="text" id="buscadorTecnicos" placeholder="Buscar técnico por nombre…" autocomplete="off" style="margin-bottom:6px;">
-         <div class="tecnico-checklist" id="tecnicoChecklist">${tecnicosDisponibles.map(([tid,t])=>
-          `<div class="check-item-row" data-nombre="${normalizar(t.nombre)}">
+         <div class="tecnico-checklist" id="tecnicoChecklist">${tecnicosDisponibles.map(([tid,t])=>{
+          const notasTecnicoActivas = notasActivasTecnico(tid, fechaEventoIso);
+          const notaHtml = notasTecnicoActivas.length ? `<div class="muted" style="color:#7A4A00;font-weight:600;margin:2px 0 4px 26px;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</div>` : "";
+          return `<div class="check-item-row" data-nombre="${normalizar(t.nombre)}">
             <label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}" data-tid="${tid}"> ${t.nombre}</label>
             <select class="sel-tipo-nuevo" data-tid="${tid}" disabled>${opcionesTipo}</select>
-          </div>`
-        ).join("")}</div>
+          </div>${notaHtml}`;
+        }).join("")}</div>
         <p class="muted" id="checklistVacio" style="display:none;margin:6px 0 0;">Ningún técnico coincide con la búsqueda.</p>`
       : `<p class="muted">Todos los técnicos ya están asignados a este evento.</p>`;
     const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
@@ -3573,6 +3684,25 @@ function renderVistaTecnico(){
   const tecnicoId = selTec.value;
   const grid = document.getElementById("tecnicoGrid");
   if(!tecnicoId){ grid.innerHTML = `<p class="muted">Carga la lista de técnicos desde Admin.</p>`; return; }
+
+  const bannerNotas = document.getElementById("notasTecnicoBanner");
+  let rangoDesde, rangoHasta;
+  if(tecnicoModo==="semana"){
+    if(!weekState.tecnico) weekState.tecnico = startOfWeek(new Date());
+    rangoDesde = isoDate(weekState.tecnico);
+    const fin = new Date(weekState.tecnico); fin.setDate(fin.getDate()+6);
+    rangoHasta = isoDate(fin);
+  } else {
+    rangoDesde = `${mesTecnicoActual.getFullYear()}-${String(mesTecnicoActual.getMonth()+1).padStart(2,"0")}-01`;
+    const ultimoDia = new Date(mesTecnicoActual.getFullYear(), mesTecnicoActual.getMonth()+1, 0).getDate();
+    rangoHasta = `${mesTecnicoActual.getFullYear()}-${String(mesTecnicoActual.getMonth()+1).padStart(2,"0")}-${String(ultimoDia).padStart(2,"0")}`;
+  }
+  const notasVisibles = notasEnRango(tecnicoId, rangoDesde, rangoHasta);
+  bannerNotas.innerHTML = notasVisibles.length ? `
+    <div class="card" style="background:#FFF6E8;border-color:var(--amber);">
+      ${notasVisibles.map(([,n])=>`<p style="margin:0;color:#7A4A00;font-weight:600;">📝 ${fmtFecha(n.fechaInicio)}${n.fechaFin!==n.fechaInicio?` – ${fmtFecha(n.fechaFin)}`:""}: ${n.texto}</p>`).join("")}
+    </div>
+  ` : "";
 
   if(tecnicoModo === "semana") renderTecnicoSemana(tecnicoId, grid);
   else if(tecnicoModo === "lista") renderTecnicoLista(tecnicoId, mesValue, grid);
