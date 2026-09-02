@@ -1740,9 +1740,9 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
 
 /* ---------- AUTH ---------- */
 document.getElementById("authBox").addEventListener("click", (e)=>{
-  if(e.target.id==="btnLogin") doLogin();
-  if(e.target.id==="btnLogout") doLogout();
-  if(e.target.id==="btnSyncHeader") sincronizarTodosLosCalendarios("header");
+  if(e.target.closest("#btnLogin")) doLogin();
+  if(e.target.closest("#btnLogout")) doLogout();
+  if(e.target.closest("#btnSyncHeader")) sincronizarTodosLosCalendarios("header");
 });
 
 async function doLogin(){
