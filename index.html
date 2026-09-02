@@ -185,7 +185,8 @@
   nav.tabs button.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--amber);}
   .submenu-chevron{
     margin-left:auto;flex-shrink:0;
-    display:inline-block;font-size:11px;color:#C7CFD8;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:16px;color:#C7CFD8;
     transition:transform .15s ease;
   }
   .submenu-chevron.expandido{transform:rotate(90deg);}
@@ -247,10 +248,12 @@
     nav.tabs button{flex:0 0 auto;padding:8px 10px;}
     nav.tabs button.active{background:rgba(0,0,0,.06);border-bottom-color:var(--amber);}
     .submenu-calendarios{flex-basis:100%;order:100;}
+    nav.tabs button[data-tab="asignar"]{padding-right:26px;}
     .submenu-chevron{
-      position:absolute;right:3px;bottom:3px;margin-left:0;
-      font-size:10px;
+      position:absolute;right:2px;top:50%;transform:translateY(-50%);
+      font-size:18px;padding:6px;margin-left:0;
     }
+    .submenu-chevron.expandido{transform:translateY(-50%) rotate(90deg);}
     .auth-box{display:contents;}
     .auth-box > *{flex:0 0 auto;}
     .auth-box .btn{padding:5px 10px;font-size:12px;}
