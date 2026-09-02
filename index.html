@@ -1171,7 +1171,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getDatabase, ref, onValue, set, update, remove, get, push
@@ -1771,6 +1771,18 @@ async function doLogin(){
     sincronizarTodosLosCalendarios("auto");
   }catch(err){
     console.error(err);
+    // Si el navegador bloquea o cierra la ventana emergente (algo frecuente en Safari o con
+    // bloqueadores de anuncios activos), no fallamos en silencio: avisamos y probamos con
+    // redirección en vez de ventana emergente, que no depende de ese permiso del navegador.
+    if(err.code==="auth/popup-blocked" || err.code==="auth/popup-closed-by-user" || err.code==="auth/cancelled-popup-request"){
+      toast("El navegador ha bloqueado la ventana de Google. Probando a conectar de otra forma…");
+      try{ await signInWithRedirect(auth, provider); }
+      catch(err2){
+        console.error(err2);
+        toast("No se pudo iniciar sesión: revisa que este navegador permita ventanas emergentes/redirecciones para esta página.");
+      }
+      return;
+    }
     toast("No se pudo iniciar sesión: " + err.message);
   }
 }
@@ -1779,6 +1791,29 @@ async function doLogout(){
   detenerAutoSync();
   await signOut(auth);
 }
+/* Si doLogin() tuvo que recurrir a signInWithRedirect (porque el navegador bloqueaba la ventana
+   emergente), al volver de Google hay que recoger aquí el resultado — signInWithPopup y
+   signInWithRedirect se completan en dos sitios distintos del código. */
+(async ()=>{
+  try{
+    const result = await getRedirectResult(auth);
+    if(result){
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if(credential?.accessToken){
+        accessToken = credential.accessToken;
+        if(result.user?.email){
+          try{ localStorage.setItem("ultimaCuentaGoogleAdmin", result.user.email); }catch(e){}
+        }
+        toast("Conectado con Google Calendar");
+        renderAuthBox();
+        iniciarAutoSync();
+        sincronizarTodosLosCalendarios("auto");
+      }
+    }
+  }catch(err){
+    console.error(err);
+  }
+})();
 
 onAuthStateChanged(auth, (user)=>{
   currentUser = user;
