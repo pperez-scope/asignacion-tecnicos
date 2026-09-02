@@ -183,6 +183,12 @@
     cursor:pointer;
   }
   nav.tabs button.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--amber);}
+  .submenu-chevron{
+    margin-left:auto;flex-shrink:0;
+    display:inline-block;font-size:11px;color:#C7CFD8;
+    transition:transform .15s ease;
+  }
+  .submenu-chevron.expandido{transform:rotate(90deg);}
   .submenu-calendarios{
     padding:4px 10px 8px 40px;
     display:flex;flex-direction:column;gap:2px;
@@ -935,7 +941,7 @@
     </div>
     <nav class="tabs" id="tabs">
       <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn"><span class="tab-icon">📋</span><span>Sin cubrir</span></button>
-      <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span><span class="tab-badge hidden" id="badgeCambiosEventos"></span></button>
+      <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span><span class="tab-badge hidden" id="badgeCambiosEventos"></span><span class="submenu-chevron" id="chevronCalendarios">▸</span></button>
       <div id="submenuCalendarios" class="submenu-calendarios hidden"></div>
       <button data-tab="tecnico"><span class="tab-icon">👤</span><span>Vista técnico</span></button>
       <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span></button>
@@ -1833,14 +1839,20 @@ document.addEventListener("keydown", (e)=>{
   }
 });
 
+let submenuCalendariosExpandido = false;
 document.getElementById("tabs").addEventListener("click",(e)=>{
+  const chevron = e.target.closest("#chevronCalendarios");
   const btn = e.target.closest("button[data-tab]");
   if(!btn) return;
   document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.remove("active"));
   btn.classList.add("active");
   document.querySelectorAll("main > section").forEach(s=>s.classList.add("hidden"));
   document.getElementById("view-"+btn.dataset.tab).classList.remove("hidden");
-  document.getElementById("submenuCalendarios").classList.toggle("hidden", btn.dataset.tab!=="asignar");
+  if(chevron && btn.dataset.tab==="asignar"){
+    submenuCalendariosExpandido = !submenuCalendariosExpandido;
+  }
+  document.getElementById("submenuCalendarios").classList.toggle("hidden", btn.dataset.tab!=="asignar" || !submenuCalendariosExpandido);
+  document.getElementById("chevronCalendarios").classList.toggle("expandido", submenuCalendariosExpandido);
   render();
 });
 function seleccionarTabDesdeHash(){
