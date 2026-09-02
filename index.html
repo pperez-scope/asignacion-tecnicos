@@ -246,7 +246,11 @@
     nav.tabs{display:contents;}
     nav.tabs button{flex:0 0 auto;padding:8px 10px;}
     nav.tabs button.active{background:rgba(0,0,0,.06);border-bottom-color:var(--amber);}
-    .submenu-calendarios{flex-basis:100%;}
+    .submenu-calendarios{flex-basis:100%;order:100;}
+    .submenu-chevron{
+      position:absolute;right:3px;bottom:3px;margin-left:0;
+      font-size:10px;
+    }
     .auth-box{display:contents;}
     .auth-box > *{flex:0 0 auto;}
     .auth-box .btn{padding:5px 10px;font-size:12px;}
