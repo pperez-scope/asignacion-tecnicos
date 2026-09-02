@@ -1095,21 +1095,6 @@
           <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
         </div>
         <div class="card">
-          <p class="muted" style="margin-top:0;">Las entradas de Teletrabajo guardadas antes de que el horario se rellenara solo no cuentan horas. Este botón les añade el horario estándar del técnico correspondiente (respetando jornadas reducidas) a todas las que estén vacías, de una vez.</p>
-          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarTeletrabajo">Rellenar horario en Teletrabajo sin horario</button>
-          <p class="muted" id="arreglarTeletrabajoStatus"></p>
-        </div>
-        <div class="card">
-          <p class="muted" style="margin-top:0;">Las entradas de Teletrabajo con horario partido (formato antiguo, con descanso a mediodía fijo) se cambian a un horario continuo de 9:00 a 18:00 con 60 minutos de descanso, igual que el nuevo horario por defecto de Oficina Scope.</p>
-          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarTeletrabajoPartido">Pasar Teletrabajo partido a 9–18 con descanso</button>
-          <p class="muted" id="arreglarTeletrabajoPartidoStatus"></p>
-        </div>
-        <div class="card">
-          <p class="muted" style="margin-top:0;">Las libranzas compensatorias creadas antes de que la nota incluyera la fecha del día trabajado se quedaron con el texto genérico. Este botón busca a qué día corresponde cada una y actualiza la nota para incluirlo.</p>
-          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnArreglarLibranzas">Añadir fecha a las notas de libranza compensatoria</button>
-          <p class="muted" id="arreglarLibranzasStatus"></p>
-        </div>
-        <div class="card">
           <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Publicación de semanas para técnicos</h3>
           <p class="muted" style="margin-top:0;">Los técnicos solo ven, en su vista de solo lectura, las semanas pasadas, la actual y la siguiente. A partir del sábado se desbloquea una semana más automáticamente. Aquí puedes publicar alguna semana extra antes de tiempo si hace falta.</p>
           <div id="publicacionSemanasList"></div>
@@ -2351,91 +2336,6 @@ document.getElementById("btnSeedTecnicos").addEventListener("click", async ()=>{
   }
   await update(ref(db), updates);
   toast(`${nuevos} técnico${nuevos>1?"s":""} añadido${nuevos>1?"s":""}`);
-});
-
-document.getElementById("btnArreglarTeletrabajo").addEventListener("click", async ()=>{
-  const statusEl = document.getElementById("arreglarTeletrabajoStatus");
-  const updates = {};
-  let corregidas = 0;
-  Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
-    const nombreTecnico = STATE.tecnicos[tid]?.nombre || "";
-    Object.entries(porFecha||{}).forEach(([fecha, datos])=>{
-      if(datos.tipo==="teletrabajo" && !datos.horario){
-        updates[`ausencias/${tid}/${fecha}/horario`] = horarioOficinaDefecto(nombreTecnico);
-        if(!datos.descansoMinutos) updates[`ausencias/${tid}/${fecha}/descansoMinutos`] = descansoOficinaDefecto(nombreTecnico);
-        corregidas++;
-      }
-    });
-  });
-  if(corregidas===0){
-    statusEl.textContent = "No había ninguna entrada de Teletrabajo sin horario. Todo en orden.";
-    return;
-  }
-  await update(ref(db), updates);
-  statusEl.textContent = `${corregidas} entrada${corregidas>1?"s":""} de Teletrabajo corregida${corregidas>1?"s":""} con el horario estándar de cada técnico.`;
-  toast(`${corregidas} entrada${corregidas>1?"s":""} corregida${corregidas>1?"s":""}`);
-});
-
-document.getElementById("btnArreglarTeletrabajoPartido").addEventListener("click", async ()=>{
-  const statusEl = document.getElementById("arreglarTeletrabajoPartidoStatus");
-  const updates = {};
-  let corregidas = 0;
-  Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
-    Object.entries(porFecha||{}).forEach(([fecha, datos])=>{
-      if(datos.tipo!=="teletrabajo" || !datos.horario) return;
-      const rangos = parseRangosMultiples(datos.horario);
-      if(rangos.length < 2) return; // no es un horario partido, no se toca
-      updates[`ausencias/${tid}/${fecha}/horario`] = "09:00–18:00";
-      updates[`ausencias/${tid}/${fecha}/descansoMinutos`] = 60;
-      corregidas++;
-    });
-  });
-  if(corregidas===0){
-    statusEl.textContent = "No había ninguna entrada de Teletrabajo con horario partido. Todo en orden.";
-    return;
-  }
-  await update(ref(db), updates);
-  statusEl.textContent = `${corregidas} entrada${corregidas>1?"s":""} de Teletrabajo cambiada${corregidas>1?"s":""} a 09:00–18:00 con 60 min de descanso.`;
-  toast(`${corregidas} entrada${corregidas>1?"s":""} corregida${corregidas>1?"s":""}`);
-});
-
-document.getElementById("btnArreglarLibranzas").addEventListener("click", async ()=>{
-  const statusEl = document.getElementById("arreglarLibranzasStatus");
-  // Para cada libranza sin nota o con la nota antigua (sin fecha), buscamos en las asignaciones qué
-  // evento la referencia (asignaciones/{eventId}/{tid}/libranzaCompensatoria === esta fecha) y de ahí
-  // sacamos la fecha del día trabajado que compensa. Si ya tiene fecha (formato nuevo) o no se
-  // encuentra ningún evento vinculado, se deja intacta.
-  const updates = {};
-  let corregidas = 0;
-  const sinEncontrar = [];
-  Object.entries(STATE.ausencias).forEach(([tid, porFecha])=>{
-    Object.entries(porFecha||{}).forEach(([fechaLibranza, datos])=>{
-      if(datos.tipo!=="libranza") return;
-      const esAutoOVacia = !datos.nota || datos.nota==="Compensa trabajo en fin de semana/festivo";
-      if(!esAutoOVacia) return; // ya tiene una nota propia (escrita a mano, o ya con fecha): no tocar
-      let eventIdEncontrado = null;
-      for(const [eventId, porTecnico] of Object.entries(STATE.asignaciones)){
-        if(porTecnico?.[tid]?.libranzaCompensatoria === fechaLibranza){
-          eventIdEncontrado = eventId;
-          break;
-        }
-      }
-      if(eventIdEncontrado){
-        updates[`ausencias/${tid}/${fechaLibranza}/nota`] = notaLibranzaCompensatoria(eventIdEncontrado);
-        corregidas++;
-      } else {
-        sinEncontrar.push(`${STATE.tecnicos[tid]?.nombre || tid} (${fechaLibranza})`);
-      }
-    });
-  });
-  if(corregidas===0 && sinEncontrar.length===0){
-    statusEl.textContent = "No había ninguna libranza compensatoria con la nota antigua. Todo en orden.";
-    return;
-  }
-  if(corregidas>0) await update(ref(db), updates);
-  statusEl.textContent = `${corregidas} nota${corregidas>1?"s":""} actualizada${corregidas>1?"s":""} con su fecha.`
-    + (sinEncontrar.length>0 ? ` ${sinEncontrar.length} no se pudo${sinEncontrar.length>1?"ieron":""} vincular a ningún evento: ${sinEncontrar.join(" · ")}. Puede que la fecha trabajada se asignara como Teletrabajo/Manual/Mites en vez de un evento de calendario — revísalas en el aviso de "libranza pendiente" de esta pestaña, o edita la nota a mano con el botón ✎.` : "");
-  toast(`${corregidas} nota${corregidas>1?"s":""} actualizada${corregidas>1?"s":""}`);
 });
 
 /* ---------- GESTIÓN DE CALENDARIOS ---------- */
