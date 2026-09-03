@@ -3767,7 +3767,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     eventosDia.forEach(([id,ev])=>{
       const datos = STATE.asignaciones[id][tecnicoId];
       const rango = rangoEventoConFallback(datos, ev);
-      segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
+      segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
     });
     return segmentos;
   }
@@ -3807,7 +3807,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     segmentos.push({ inicio:baseRango.inicio, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso, lugar:baseLugar, sala:baseSala, tipoAsignacion:baseTipoAsignacion });
   });
   eventosOnline.forEach(({id,ev,rango,datos})=>{
-    segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", datos, ev });
+    segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
   });
   segmentos.sort((a,b)=> a.inicio-b.inicio);
 
