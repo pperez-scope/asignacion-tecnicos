@@ -2725,11 +2725,19 @@ function notasEnRango(tecnicoId, fechaDesde, fechaHasta){
     .sort((a,b)=> a[1].fechaInicio.localeCompare(b[1].fechaInicio));
 }
 function modalidadCompatible(modalidad){
-  return modalidad==="online" || modalidad==="oficina";
+  return modalidad==="online" || modalidad==="oficina" || modalidad==="visita";
+}
+/* A diferencia de modalidadCompatible (que decide si el evento convive con la base del técnico
+   en Vista técnico y en el cómputo de horas), esta decide específicamente el color que se
+   muestra en el Cuadrante: "visita técnica" sí convive con la base como online/oficina, pero en
+   el Cuadrante debe destacar con el color del propio evento, no con el de la base. */
+function modalidadUsaColorPropioEnCuadrante(modalidad){
+  return modalidad!=="online" && modalidad!=="oficina";
 }
 function textoModalidad(modalidad){
   if(modalidad==="online") return "💻 Online";
   if(modalidad==="oficina") return "🏠 En oficina (Scope)";
+  if(modalidad==="visita") return "🔧 Visita técnica";
   if(modalidad==="presencial") return "🏢 Presencial";
   return "";
 }
@@ -3235,6 +3243,7 @@ function renderAsignarDetalle(eventId){
           <option value="presencial" ${evento.modalidad==="presencial"?"selected":""}>Presencial</option>
           <option value="online" ${evento.modalidad==="online"?"selected":""}>Online</option>
           <option value="oficina" ${evento.modalidad==="oficina"?"selected":""}>En oficina (Scope)</option>
+          <option value="visita" ${evento.modalidad==="visita"?"selected":""}>Visita técnica</option>
         </select>
       </div>
     </div>
@@ -3837,7 +3846,7 @@ function segmentosATarjetasHTML(segmentos){
     if(seg.tipo==="todo-el-dia"){
       return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}</div>`;
     }
-    const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="oficina" ? "🏠 " : (seg.modalidad==="presencial" ? "🏢 " : ""));
+    const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="oficina" ? "🏠 " : (seg.modalidad==="visita" ? "🔧 " : (seg.modalidad==="presencial" ? "🏢 " : "")));
     const verEvento = seg.tipo==="evento" && seg.id ? `data-ver-evento="${seg.id}"` : "";
     const claseClicable = seg.tipo==="evento" && seg.id ? "turno-block-clicable" : "";
     if(seg.inicio==null || seg.fin==null){
@@ -4432,9 +4441,9 @@ function renderVistaGeneral(){
         }
         hayAlgoQueEditar = true;
       } else if(eventosDia.length){
-        const hayPresencial = eventosDia.some(([,ev])=> !modalidadCompatible(ev.modalidad));
+        const hayPresencial = eventosDia.some(([,ev])=> modalidadUsaColorPropioEnCuadrante(ev.modalidad));
         if(hayPresencial){
-          const ev = (eventosDia.find(([,e])=> !modalidadCompatible(e.modalidad)) || eventosDia[0])[1];
+          const ev = (eventosDia.find(([,e])=> modalidadUsaColorPropioEnCuadrante(e.modalidad)) || eventosDia[0])[1];
           color = colorFor(ev.calendario);
           clientesUsados.add(claveCalendarioReal(ev.calendario));
           titulo = ev.summary;
