@@ -4428,11 +4428,26 @@ function renderVistaGeneral(){
         }
         hayAlgoQueEditar = true;
       } else if(eventosDia.length){
-        const ev = eventosDia[0][1];
-        color = colorFor(ev.calendario);
-        clientesUsados.add(claveCalendarioReal(ev.calendario));
-        titulo = ev.summary;
-        hayAlgoQueEditar = true;
+        const hayPresencial = eventosDia.some(([,ev])=> !modalidadCompatible(ev.modalidad));
+        if(hayPresencial){
+          const ev = (eventosDia.find(([,e])=> !modalidadCompatible(e.modalidad)) || eventosDia[0])[1];
+          color = colorFor(ev.calendario);
+          clientesUsados.add(claveCalendarioReal(ev.calendario));
+          titulo = ev.summary;
+          hayAlgoQueEditar = true;
+        } else if(!SIN_OFICINA_DEFECTO.includes(t.nombre)){
+          // Todos los eventos son compatibles (online o en la propia oficina): la base manda,
+          // igual que si ese día no hubiera ningún evento — el técnico sigue en su sitio habitual.
+          color = AUSENCIA_COLORS.oficina;
+          titulo = `Oficina Scope (por defecto) · ${eventosDia.map(([,e])=>e.summary).join(", ")}`;
+          hayAlgoQueEditar = true;
+        } else {
+          const ev = eventosDia[0][1];
+          color = colorFor(ev.calendario);
+          clientesUsados.add(claveCalendarioReal(ev.calendario));
+          titulo = ev.summary;
+          hayAlgoQueEditar = true;
+        }
       } else if(noLaborable){
         color = "#DCDCDC";
         titulo = "Festivo / fin de semana";
