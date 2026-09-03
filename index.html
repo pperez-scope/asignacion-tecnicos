@@ -361,9 +361,10 @@
     min-width:0;
   }
   .hcal-allday-event{
-    font-size:10px;font-weight:600;padding:2px 5px;border-radius:4px;
+    font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;
+    background:#fff;border:1px solid var(--line);border-left-width:4px;border-left-style:solid;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
-    min-width:0;box-sizing:border-box;
+    min-width:0;box-sizing:border-box;color:var(--ink);
   }
   .hcal-body{display:grid;grid-template-columns:52px repeat(7,1fr);max-height:70vh;overflow-y:auto;position:relative;}
   .hcal-time-col{position:relative;border-right:1px solid var(--line);}
@@ -381,8 +382,11 @@
   }
   .hcal-event{
     position:absolute;border-radius:5px;
+    background:#fff;border:1px solid var(--line);
+    border-left-width:4px;border-left-style:solid;
     padding:2px 5px;overflow:hidden;cursor:pointer;
     box-sizing:border-box;transition:z-index .01s;
+    box-shadow:0 1px 2px rgba(0,0,0,.05);
   }
   .hcal-event:hover{z-index:8;box-shadow:0 2px 8px rgba(0,0,0,.25);}
   .hcal-event-time{display:block;font-size:9.5px;font-weight:700;opacity:.9;}
@@ -1729,8 +1733,8 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
         const cubierto = nTec>0;
         const colorEvento = colorFor(ev.calendario);
         const estilo = cubierto
-          ? `background:${colorEvento};color:#fff;`
-          : `background:#fff;color:var(--ink);border:2px dashed ${colorEvento};`;
+          ? `border-left-color:${colorEvento};`
+          : `border-left-color:${colorEvento};border-left-style:dashed;`;
         return `<div class="hcal-allday-event ${clickable?'':'no-click'}" style="${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">${ev.summary}</div>`;
       }).join("")}</div>`;
     });
@@ -1764,8 +1768,8 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
       const izq = ancho*_carril;
       const colorEvento = colorFor(ev.calendario);
       const estilo = cubierto
-        ? `background:${colorEvento};color:#fff;border:1px solid rgba(0,0,0,.08);`
-        : `background:#fff;color:var(--ink);border:2px dashed ${colorEvento};`;
+        ? `border-left-color:${colorEvento};`
+        : `border-left-color:${colorEvento};border-left-style:dashed;`;
       html += `<div class="hcal-event ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="top:${top}px;height:${alto}px;left:${izq}%;width:calc(${ancho}% - 2px);${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">
         <span class="hcal-event-time">${fmtHora(ev.start)}</span>
         <span class="hcal-event-title">${ev.summary}</span>
