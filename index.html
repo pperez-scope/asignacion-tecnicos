@@ -2737,7 +2737,7 @@ function modalidadUsaColorPropioEnCuadrante(modalidad){
 function textoModalidad(modalidad){
   if(modalidad==="online") return "💻 Online";
   if(modalidad==="oficina") return "🏠 En oficina (Scope)";
-  if(modalidad==="visita") return "🔧 Visita técnica";
+  if(modalidad==="visita") return "📋 Visita técnica";
   if(modalidad==="presencial") return "🏢 Presencial";
   return "";
 }
@@ -3846,7 +3846,7 @@ function segmentosATarjetasHTML(segmentos){
     if(seg.tipo==="todo-el-dia"){
       return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}</div>`;
     }
-    const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="oficina" ? "🏠 " : (seg.modalidad==="visita" ? "🔧 " : (seg.modalidad==="presencial" ? "🏢 " : "")));
+    const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="oficina" ? "🏠 " : (seg.modalidad==="visita" ? "📋 " : (seg.modalidad==="presencial" ? "🏢 " : "")));
     const verEvento = seg.tipo==="evento" && seg.id ? `data-ver-evento="${seg.id}"` : "";
     const claseClicable = seg.tipo==="evento" && seg.id ? "turno-block-clicable" : "";
     if(seg.inicio==null || seg.fin==null){
