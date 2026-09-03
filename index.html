@@ -1354,7 +1354,8 @@ const COLOR_CALENDARIO_POR_NOMBRE = {
   "fundación juan march": "#7D3C5C",
   "mantenimiento fjm": "#9E6D85",
   "ateneo": "#2CA6A4",
-  "formación scope": "#C98A9B"
+  "formación scope": "#C98A9B",
+  "mites": "#5B2C82"
 };
 
 // Horario de Oficina Scope que se asigna por defecto entre semana cuando el técnico no tiene
@@ -4173,7 +4174,7 @@ function renderEditorDiaTecnico(){
           <option value="permiso" ${base.tipo==="permiso"?"selected":""}>Permiso</option>
           <option value="vacaciones" ${base.tipo==="vacaciones"?"selected":""}>Vacaciones</option>
           <option value="bajaMedica" ${base.tipo==="bajaMedica"?"selected":""}>Baja médica</option>
-          <option value="mites" ${base.tipo==="mites"?"selected":""}>Mites</option>
+          ${base.tipo==="mites" ? `<option value="mites" selected>Mites</option>` : ""}
           <option value="oficina" ${base.tipo==="oficina"?"selected":""}>Oficina Scope</option>
           <option value="teletrabajo" ${base.tipo==="teletrabajo"?"selected":""}>Teletrabajo</option>
           <option value="manual" ${base.tipo==="manual"?"selected":""}>Asignación manual</option>
@@ -4525,7 +4526,6 @@ function renderAusencias(){
           <option value="permiso">Permiso</option>
           <option value="vacaciones">Vacaciones</option>
           <option value="bajaMedica">Baja médica</option>
-          <option value="mites">Mites</option>
           <option value="oficina">Oficina Scope</option>
           <option value="teletrabajo">Teletrabajo</option>
           <option value="manual">Asignación manual</option>
@@ -4825,6 +4825,9 @@ function renderAusencias(){
       if(!elTecnico || !elTipo) return; // formulario no visible (no admin)
 
       elTecnico.value = tid;
+      if(datos.tipo==="mites" && !elTipo.querySelector('option[value="mites"]')){
+        elTipo.insertAdjacentHTML("beforeend", `<option value="mites">Mites</option>`);
+      }
       elTipo.value = datos.tipo;
       elTipo.dispatchEvent(new Event("change"));
 
