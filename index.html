@@ -2650,6 +2650,28 @@ async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipo
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   toast("Técnico asignado");
 }
+/* Cuando se asigna a un técnico a pesar de tener un conflicto de horario con otro evento ese
+   mismo día, el evento anterior se le desasigna automáticamente (ya no puede estar en los dos
+   sitios a la vez) y se genera un aviso para que se busque un sustituto en el evento anterior. */
+async function resolverConflictosYAvisar(tecnicoId, conflictos, eventoNuevoId){
+  const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || tecnicoId;
+  const eventoNuevo = STATE.eventos[eventoNuevoId];
+  for(const c of conflictos){
+    const eventoAnteriorId = Object.entries(STATE.eventos).find(([id,ev])=> ev===c.evento)?.[0];
+    if(!eventoAnteriorId) continue;
+    await desasignarTecnico(eventoAnteriorId, tecnicoId);
+    const avisoKey = push(ref(db,"avisosCambios")).key;
+    await update(ref(db), { [`avisosCambios/${avisoKey}`]: {
+      eventId: eventoAnteriorId, tipo:"reasignado",
+      resumen: c.evento.summary,
+      calendario: c.evento.calendario,
+      fechaAntigua: c.evento.start, fechaNueva: null,
+      tecnicos: [nombreTecnico],
+      detalleReasignado: `${nombreTecnico} se ha reasignado a "${eventoNuevo?.summary || "otro evento"}" (${fmtFecha(eventoNuevo?.start)}), que se solapaba en horario. Busca un sustituto para este evento.`,
+      creado: Date.now()
+    }});
+  }
+}
 async function desasignarTecnico(eventId, tecnicoId){
   await remove(ref(db, `asignaciones/${eventId}/${tecnicoId}`));
   try{ await actualizarDescripcionEvento(eventId); }
@@ -2839,8 +2861,11 @@ function renderAvisosCambios(){
   card.classList.remove("hidden");
   lista.innerHTML = avisos.map(([id, av])=>{
     const tecnicosTxt = av.tecnicos && av.tecnicos.length ? av.tecnicos.join(", ") : "sin técnicos con nombre";
+    const icono = av.tipo==="eliminado" ? "🗑️" : (av.tipo==="reasignado" ? "🔁" : "🔄");
     const detalle = av.tipo==="eliminado"
       ? `Se ha borrado o cancelado en Calendar. Estaba el ${fmtFecha(av.fechaAntigua)} a las ${fmtHora(av.fechaAntigua)}.`
+      : av.tipo==="reasignado"
+      ? av.detalleReasignado
       : `Ha cambiado de ${fmtFecha(av.fechaAntigua)} ${fmtHora(av.fechaAntigua)} a ${fmtFecha(av.fechaNueva)} ${fmtHora(av.fechaNueva)}.`;
     const conflictosHtml = (av.conflictosPorTecnico && av.conflictosPorTecnico.length) ? `
       <div style="margin-top:6px;padding:6px 10px;background:#FDE7E1;border-radius:6px;color:#7A2E1D;font-size:12px;">
@@ -2849,10 +2874,10 @@ function renderAvisosCambios(){
       </div>
     ` : "";
     return `<div class="event-row">
-      <div class="event-fecha">${av.tipo==="eliminado"?"🗑️":"🔄"}</div>
+      <div class="event-fecha">${icono}</div>
       <div style="flex:1;">
         <strong>${av.resumen}</strong> · ${CALENDARIOS[av.calendario]?.nombre || av.calendario}<br>
-        <span class="muted">${detalle} Asignado a: ${tecnicosTxt}.</span>
+        <span class="muted">${detalle}${av.tipo!=="reasignado"?` Asignado a: ${tecnicosTxt}.`:""}</span>
         ${conflictosHtml}
       </div>
       ${av.tipo!=="eliminado" && STATE.eventos[av.eventId] ? `<button class="btn btn-teal" data-ver-aviso="${id}">Ver evento</button>` : ""}
@@ -3144,19 +3169,21 @@ function renderAsignarDetalle(eventId){
       .sort((a,b)=> a[1].nombre.localeCompare(b[1].nombre,"es"));
     const opcionesTipo = `<option value="">Tipo…</option>${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}`;
     const normalizar = (s)=> s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+    const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
     const checklistHtml = tecnicosDisponibles.length
       ? `<input type="text" id="buscadorTecnicos" placeholder="Buscar técnico por nombre…" autocomplete="off" style="margin-bottom:6px;">
          <div class="tecnico-checklist" id="tecnicoChecklist">${tecnicosDisponibles.map(([tid,t])=>{
           const notasTecnicoActivas = notasActivasTecnico(tid, fechaEventoIso);
           const notaHtml = notasTecnicoActivas.length ? `<div class="muted" style="color:#7A4A00;font-weight:600;margin:2px 0 4px 26px;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</div>` : "";
+          const conflictosIniciales = obtenerConflictosHorario(tid, eventId, fechaEventoIso, horarioDefecto);
+          const conflictoHtml = `<div class="muted conflicto-disponibilidad ${conflictosIniciales.length?"":"hidden"}" id="conflicto-${tid}" style="color:var(--danger);font-weight:600;margin:2px 0 4px 26px;">⚠️ No disponible: ya tiene ${conflictosIniciales.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}</div>`;
           return `<div class="check-item-row" data-nombre="${normalizar(t.nombre)}">
             <label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}" data-tid="${tid}"> ${t.nombre}</label>
             <select class="sel-tipo-nuevo" data-tid="${tid}" disabled>${opcionesTipo}</select>
-          </div>${notaHtml}`;
+          </div>${notaHtml}${conflictoHtml}`;
         }).join("")}</div>
         <p class="muted" id="checklistVacio" style="display:none;margin:6px 0 0;">Ningún técnico coincide con la búsqueda.</p>`
       : `<p class="muted">Todos los técnicos ya están asignados a este evento.</p>`;
-    const horarioDefecto = calcularHorarioConMargenes(evento, 0, 0);
     const salasNuevo = salasDeCalendario(evento.calendario);
     const lugarNuevoDefecto = lugarDefectoCalendario(evento.calendario);
     formAsignacionHtml = `
@@ -3419,6 +3446,7 @@ function renderAsignarDetalle(eventId){
         if(conflictos.length){
           const nombreTecnico = STATE.tecnicos[editandoTecnicoId]?.nombre || editandoTecnicoId;
           if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
+          await resolverConflictosYAvisar(editandoTecnicoId, conflictos, eventId);
         }
 
         // Si había una libranza compensatoria puesta antes y ahora se borra o se cambia de fecha,
@@ -3464,10 +3492,21 @@ function renderAsignarDetalle(eventId){
     const despues = parseInt(inputDespues.value,10) || 0;
     inputHorario.value = calcularHorarioConMargenes(evento, antes, despues);
     evaluarDescansoAuto();
+    actualizarConflictosDisponibilidad();
+  };
+  const actualizarConflictosDisponibilidad = ()=>{
+    cont.querySelectorAll(".conflicto-disponibilidad").forEach(div=>{
+      const tid = div.id.replace("conflicto-","");
+      const conflictos = obtenerConflictosHorario(tid, eventId, fechaEventoIso, inputHorario.value);
+      div.classList.toggle("hidden", conflictos.length===0);
+      if(conflictos.length){
+        div.textContent = `⚠️ No disponible: ya tiene ${conflictos.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}`;
+      }
+    });
   };
   if(inputAntes) inputAntes.addEventListener("input", recalcularHorario);
   if(inputDespues) inputDespues.addEventListener("input", recalcularHorario);
-  if(inputHorario) inputHorario.addEventListener("change", evaluarDescansoAuto);
+  if(inputHorario) inputHorario.addEventListener("change", ()=>{ evaluarDescansoAuto(); actualizarConflictosDisponibilidad(); });
   if(chkDescanso) chkDescanso.addEventListener("change", ()=>{ inputMinutos.disabled = !chkDescanso.checked; });
   if(inputHorario) evaluarDescansoAuto();
 
@@ -3512,7 +3551,7 @@ function renderAsignarDetalle(eventId){
 
   const btnAsignar = document.getElementById("btnAsignar");
   if(btnAsignar){
-    btnAsignar.addEventListener("click", ()=>{
+    btnAsignar.addEventListener("click", async ()=>{
       const marcados = Array.from(cont.querySelectorAll(".chk-nuevo-tecnico:checked"));
       if(marcados.length===0) return toast("Marca al menos un técnico");
       const asignacionesLista = [];
@@ -3529,6 +3568,7 @@ function renderAsignarDetalle(eventId){
         if(conflictos.length){
           const nombreTecnico = STATE.tecnicos[tid]?.nombre || tid;
           if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
+          await resolverConflictosYAvisar(tid, conflictos, eventId);
         }
       }
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
