@@ -3002,6 +3002,14 @@ function renderAsignarMes(mesValue){
   });
 }
 
+/* Minutos de descanso que se sugieren automáticamente según la duración del turno:
+   8h o más → 60 min; entre 6h y 8h → 15 min; menos de 6h → sin descanso marcado. */
+function minutosDescansoAutomatico(horas){
+  if(horas===null || horas===undefined || isNaN(horas)) return null;
+  if(horas >= 8) return 60;
+  if(horas >= 6) return 15;
+  return null;
+}
 /* Duración en horas de un horario "HH:MM–HH:MM" (contempla turnos que cruzan medianoche) */
 function parseDuracionHoras(horarioStr){
   const m = (horarioStr||"").match(/^(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})$/);
@@ -3427,10 +3435,11 @@ function renderAsignarDetalle(eventId){
 
   const evaluarDescansoAuto = ()=>{
     const horas = parseDuracionHoras(inputHorario.value);
-    if(horas !== null && horas >= 6){
+    const minutosAuto = minutosDescansoAutomatico(horas);
+    if(minutosAuto !== null){
       chkDescanso.checked = true;
-      if(!inputMinutos.value || inputMinutos.value==="0") inputMinutos.value = 15;
-      hintDescanso.textContent = `El turno dura ${horas.toFixed(1).replace(".0","")} h (6 o más), así que se ha marcado un descanso de 15 min automáticamente. Puedes desmarcarlo o ajustar los minutos si no aplica.`;
+      inputMinutos.value = minutosAuto;
+      hintDescanso.textContent = `El turno dura ${horas.toFixed(1).replace(".0","")} h, así que se ha marcado un descanso de ${minutosAuto} min automáticamente. Puedes desmarcarlo o ajustar los minutos si no aplica.`;
     } else {
       chkDescanso.checked = false;
       hintDescanso.textContent = horas!==null ? `El turno dura ${horas.toFixed(1).replace(".0","")} h. Márcalo a mano si aún así hace falta descanso.` : "";
@@ -4256,9 +4265,10 @@ function renderEditorDiaTecnico(){
 
   const evaluarDescansoAuto = ()=>{
     const horas = horasDesdeTextoLibre(horarioInput.value);
-    if(horas >= 6){
+    const minutosAuto = minutosDescansoAutomatico(horas);
+    if(minutosAuto !== null){
       chkDescanso.checked = true;
-      if(!minutosDescanso.value || minutosDescanso.value==="0") minutosDescanso.value = 15;
+      minutosDescanso.value = minutosAuto;
     }
     minutosDescanso.disabled = !chkDescanso.checked;
   };
@@ -4622,9 +4632,10 @@ function renderAusencias(){
 
     const evaluarDescansoAuto = ()=>{
       const horas = horasDesdeTextoLibre(horarioInput.value);
-      if(horas >= 6){
+      const minutosAuto = minutosDescansoAutomatico(horas);
+      if(minutosAuto !== null){
         chkDescanso.checked = true;
-        if(!minutosDescanso.value || minutosDescanso.value==="0") minutosDescanso.value = 15;
+        minutosDescanso.value = minutosAuto;
       } else {
         chkDescanso.checked = false;
       }
