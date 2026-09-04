@@ -3681,6 +3681,10 @@ function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNu
   const rangoNuevo = parseRangoMinutos(horarioNuevo);
   if(!rangoNuevo) return []; // sin horario definido, no podemos comparar
   const conflictos = [];
+  const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
+  if(ausencia && ["libranza","permiso","vacaciones","bajaMedica"].includes(ausencia.tipo)){
+    conflictos.push({ evento:{ summary: AUSENCIA_LABELS[ausencia.tipo] }, horario:"todo el día" });
+  }
   eventosDelDia(fechaIso).forEach(([id, ev])=>{
     if(id === eventoIdActual) return;
     const datos = STATE.asignaciones[id]?.[tecnicoId];
