@@ -2574,10 +2574,16 @@ document.getElementById("btnDescargarInforme").addEventListener("click", ()=>{
 });
 
 /* Actualiza (o inserta) el bloque de técnicos en la descripción del evento en Google Calendar */
-async function actualizarDescripcionEvento(eventId){
+async function actualizarDescripcionEvento(eventId, asignacionesActualizadas){
   const evento = STATE.eventos[eventId];
   if(!evento) return;
-  const asign = STATE.asignaciones[eventId] || {};
+  // Si quien llama ya conoce el estado correcto (porque acaba de construirlo, antes de que el
+  // listener en tiempo real de Firebase confirme el cambio en este mismo navegador), lo usamos
+  // directamente en vez de leer STATE.asignaciones — leerlo aquí justo después de escribir podía
+  // devolver todavía el valor ANTERIOR al cambio (el listener tarda un instante en actualizarse),
+  // lo que hacía que a veces no se guardara el técnico recién asignado, o que al reasignar se
+  // quedara el nombre del técnico anterior en la descripción.
+  const asign = asignacionesActualizadas !== undefined ? asignacionesActualizadas : (STATE.asignaciones[eventId] || {});
   const nombres = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre;
     if(!nombre) return null;
@@ -2656,7 +2662,11 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
     }
   });
   await update(ref(db), updates);
-  try{ await actualizarDescripcionEvento(eventId); }
+  const asignacionesActualizadas = { ...(STATE.asignaciones[eventId]||{}) };
+  asignacionesLista.forEach(({tid, tipoAsignacion})=>{
+    asignacionesActualizadas[tid] = { horario: horario||"", descansoMinutos, tipoAsignacion: tipoAsignacion||"", lugar: lugar||"", sala: sala||"" };
+  });
+  try{ await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   const n = asignacionesLista.length;
   toast(`${n} técnico${n>1?"s":""} asignado${n>1?"s":""}`);
@@ -2675,7 +2685,8 @@ async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipo
     dbUpdates[`ausencias/${tecnicoId}/${libranzaCompensatoria}`] = { tipo:"libranza", nota:notaLibranzaCompensatoria(eventId) };
   }
   await update(ref(db), dbUpdates);
-  try{ await actualizarDescripcionEvento(eventId); }
+  const asignacionesActualizadas = { ...(STATE.asignaciones[eventId]||{}), [tecnicoId]: updates };
+  try{ await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   toast("Técnico asignado");
 }
@@ -2703,7 +2714,9 @@ async function resolverConflictosYAvisar(tecnicoId, conflictos, eventoNuevoId){
 }
 async function desasignarTecnico(eventId, tecnicoId){
   await remove(ref(db, `asignaciones/${eventId}/${tecnicoId}`));
-  try{ await actualizarDescripcionEvento(eventId); }
+  const asignacionesActualizadas = { ...(STATE.asignaciones[eventId]||{}) };
+  delete asignacionesActualizadas[tecnicoId];
+  try{ await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
   catch(err){ toast("Quitado en la app, pero falló Calendar: "+err.message); return; }
   toast("Técnico desasignado");
 }
@@ -3964,6 +3977,9 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
       const rango = rangoEventoConFallback(datos, ev);
       segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
     });
+    // El horario realmente asignado (con montaje/desmontaje) puede no coincidir con el orden bruto
+    // del evento en Calendar, así que se reordenan aquí por el horario final antes de mostrarlos.
+    segmentos.sort((a,b)=> (a.inicio??0) - (b.inicio??0));
     return segmentos;
   }
 
@@ -4607,14 +4623,21 @@ function renderVistaGeneral(){
         hayAlgoQueEditar = true;
       } else if(segmentos.length){
         // Un evento presencial o de visita técnica destaca con su propio color en el Cuadrante,
-        // aunque conviva con la base (Oficina Scope/Teletrabajo/Manual) en Vista técnico.
-        const eventoDestacado = segmentos.find(s=> s.tipo==="evento" && modalidadUsaColorPropioEnCuadrante(s.modalidad));
+        // aunque conviva con la base (Oficina Scope/Teletrabajo/Manual) en Vista técnico. Si hay
+        // más de uno ese día, la celda se divide en una franja de color por cada evento.
+        const eventosDestacados = segmentos.filter(s=> s.tipo==="evento" && modalidadUsaColorPropioEnCuadrante(s.modalidad));
         const base = segmentos.find(s=> s.tipo==="base");
-        if(eventoDestacado){
-          color = eventoDestacado.color;
-          clientesUsados.add(claveCalendarioReal(eventoDestacado.ev.calendario));
-          titulo = eventoDestacado.label;
+        if(eventosDestacados.length){
+          eventosDestacados.forEach(ev=> clientesUsados.add(claveCalendarioReal(ev.ev.calendario)));
+          titulo = eventosDestacados.map(ev=>ev.label).join(" · ");
           hayAlgoQueEditar = true;
+          if(eventosDestacados.length===1){
+            color = eventosDestacados[0].color;
+          } else {
+            const paso = 100/eventosDestacados.length;
+            const paradas = eventosDestacados.map((ev,i)=> `${ev.color} ${(i*paso).toFixed(2)}% ${((i+1)*paso).toFixed(2)}%`).join(", ");
+            color = `linear-gradient(90deg, ${paradas})`;
+          }
         } else if(base){
           color = base.color;
           const calAsociado = STATE.ausencias[tid]?.[fechaIso]?.calendarioAsociado;
