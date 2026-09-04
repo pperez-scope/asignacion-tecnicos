@@ -4599,48 +4599,42 @@ function renderVistaGeneral(){
         cells += `<td class="${claseExtra}" title="${titulo}"><span class="celda-color" style="background:${color};"></span></td>`;
         return;
       }
-      const ausencia = STATE.ausencias[tid]?.[fechaIso];
-      const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
+      const segmentos = calcularSegmentosDia(tid, fechaIso);
       let hayAlgoQueEditar = false;
-      if(ausencia){
-        const calAsociadoReal = claveCalendarioReal(ausencia.calendarioAsociado);
-        if(calAsociadoReal && CALENDARIOS[calAsociadoReal]){
-          color = colorFor(calAsociadoReal);
-          clientesUsados.add(calAsociadoReal);
-          titulo = `${ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo]} · ${CALENDARIOS[calAsociadoReal].nombre}`;
-        } else {
-          color = AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO;
-          titulo = ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo];
-        }
+      if(segmentos.length===1 && segmentos[0].tipo==="todo-el-dia"){
+        color = segmentos[0].color;
+        titulo = segmentos[0].label + (segmentos[0].nota ? ` — ${segmentos[0].nota}` : "");
         hayAlgoQueEditar = true;
-      } else if(eventosDia.length){
-        const hayPresencial = eventosDia.some(([,ev])=> modalidadUsaColorPropioEnCuadrante(ev.modalidad));
-        if(hayPresencial){
-          const ev = (eventosDia.find(([,e])=> modalidadUsaColorPropioEnCuadrante(e.modalidad)) || eventosDia[0])[1];
-          color = colorFor(ev.calendario);
-          clientesUsados.add(claveCalendarioReal(ev.calendario));
-          titulo = ev.summary;
+      } else if(segmentos.length){
+        // Un evento presencial o de visita técnica destaca con su propio color en el Cuadrante,
+        // aunque conviva con la base (Oficina Scope/Teletrabajo/Manual) en Vista técnico.
+        const eventoDestacado = segmentos.find(s=> s.tipo==="evento" && modalidadUsaColorPropioEnCuadrante(s.modalidad));
+        const base = segmentos.find(s=> s.tipo==="base");
+        if(eventoDestacado){
+          color = eventoDestacado.color;
+          clientesUsados.add(claveCalendarioReal(eventoDestacado.ev.calendario));
+          titulo = eventoDestacado.label;
           hayAlgoQueEditar = true;
-        } else if(!SIN_OFICINA_DEFECTO.includes(t.nombre)){
-          // Todos los eventos son compatibles (online o en la propia oficina): la base manda,
-          // igual que si ese día no hubiera ningún evento — el técnico sigue en su sitio habitual.
-          color = AUSENCIA_COLORS.oficina;
-          titulo = `Oficina Scope (por defecto) · ${eventosDia.map(([,e])=>e.summary).join(", ")}`;
+        } else if(base){
+          color = base.color;
+          const calAsociado = STATE.ausencias[tid]?.[fechaIso]?.calendarioAsociado;
+          if(calAsociado) clientesUsados.add(claveCalendarioReal(calAsociado));
+          const eventosApilados = segmentos.filter(s=>s.tipo==="evento").map(s=>s.label).join(", ");
+          titulo = base.label + (eventosApilados ? ` · ${eventosApilados}` : "");
           hayAlgoQueEditar = true;
         } else {
-          const ev = eventosDia[0][1];
-          color = colorFor(ev.calendario);
-          clientesUsados.add(claveCalendarioReal(ev.calendario));
-          titulo = ev.summary;
-          hayAlgoQueEditar = true;
+          // Sin base (técnico sin oficina por defecto) pero con algún evento igualmente: el primero
+          const primerEvento = segmentos.find(s=>s.tipo==="evento");
+          if(primerEvento){
+            color = primerEvento.color;
+            clientesUsados.add(claveCalendarioReal(primerEvento.ev.calendario));
+            titulo = primerEvento.label;
+            hayAlgoQueEditar = true;
+          }
         }
       } else if(noLaborable){
         color = "#DCDCDC";
         titulo = "Festivo / fin de semana";
-      } else if(!SIN_OFICINA_DEFECTO.includes(t.nombre)){
-        color = AUSENCIA_COLORS.oficina;
-        titulo = "Oficina Scope (por defecto)";
-        hayAlgoQueEditar = true;
       }
       const clickable = isAdmin && hayAlgoQueEditar;
       cells += `<td class="${claseExtra} ${clickable?'cuadrante-celda-editable':''}" title="${titulo}" ${clickable?`data-cuadrante-tid="${tid}" data-cuadrante-fecha="${fechaIso}"`:""}><span class="celda-color" style="background:${color};"></span></td>`;
