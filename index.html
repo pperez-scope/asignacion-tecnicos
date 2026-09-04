@@ -2603,10 +2603,6 @@ async function guardarDescripcionGoogle(eventId, textoNuevo){
 }
 
 /* ---------- ASIGNACIÓN ---------- */
-async function guardarNotaEvento(eventId, texto){
-  await update(ref(db, `eventos/${eventId}`), { notaInterna: texto||"" });
-  toast("Descripción guardada");
-}
 async function guardarModalidadEvento(eventId, modalidad, excluirInforme, excluirSinCubrir){
   await update(ref(db, `eventos/${eventId}`), { modalidad: modalidad||"", excluirInforme: !!excluirInforme, excluirSinCubrir: !!excluirSinCubrir });
   toast("Guardado");
@@ -3086,7 +3082,6 @@ function renderAsignarDetalle(eventId){
       ${isAdmin?`<button data-editar="${tid}" title="Editar">✎</button><button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
-  const notaActual = evento.notaInterna || "";
   const descripcionGoogle = descripcionOriginalGoogle(evento);
 
   const editando = editandoTecnicoId && asign[editandoTecnicoId];
@@ -3177,10 +3172,12 @@ function renderAsignarDetalle(eventId){
           const notaHtml = notasTecnicoActivas.length ? `<div class="muted" style="color:#7A4A00;font-weight:600;margin:2px 0 4px 26px;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</div>` : "";
           const conflictosIniciales = obtenerConflictosHorario(tid, eventId, fechaEventoIso, horarioDefecto);
           const conflictoHtml = `<div class="muted conflicto-disponibilidad ${conflictosIniciales.length?"":"hidden"}" id="conflicto-${tid}" style="color:var(--danger);font-weight:600;margin:2px 0 4px 26px;">⚠️ No disponible: ya tiene ${conflictosIniciales.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}</div>`;
+          const otrasIniciales = obtenerOtrasAsignacionesMismoDia(tid, eventId, fechaEventoIso, horarioDefecto);
+          const otrasHtml = `<div class="muted otras-asignaciones-dia ${otrasIniciales.length?"":"hidden"}" id="otras-${tid}" style="color:#8A5A00;font-weight:600;margin:2px 0 4px 26px;">🟠 También tiene ese día: ${otrasIniciales.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}</div>`;
           return `<div class="check-item-row" data-nombre="${normalizar(t.nombre)}">
             <label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}" data-tid="${tid}"> ${t.nombre}</label>
             <select class="sel-tipo-nuevo" data-tid="${tid}" disabled>${opcionesTipo}</select>
-          </div>${notaHtml}${conflictoHtml}`;
+          </div>${notaHtml}${conflictoHtml}${otrasHtml}`;
         }).join("")}</div>
         <p class="muted" id="checklistVacio" style="display:none;margin:6px 0 0;">Ningún técnico coincide con la búsqueda.</p>`
       : `<p class="muted">Todos los técnicos ya están asignados a este evento.</p>`;
@@ -3303,25 +3300,19 @@ function renderAsignarDetalle(eventId){
       ${isAdmin ? `
       <textarea id="descGoogleEvento" rows="3" placeholder="Se guarda también en el evento original de Google Calendar…">${descripcionGoogle.replace(/</g,"&lt;")}</textarea>
       <button class="btn btn-ghost" id="btnGuardarDescGoogle" style="margin-top:6px;">${(!evento.calendarId || evento.soloLectura) ? "Guardar en la app" : "Guardar en Google Calendar"}</button>
+      ${descripcionGoogle ? `
+      <div style="margin-top:8px;">
+        <span style="display:inline-flex;align-items:center;gap:6px;background:#E4F2E6;border:1px solid var(--teal);color:var(--teal);padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;">
+          ✓ Guardado: ${descripcionGoogle.length>60 ? descripcionGoogle.slice(0,60)+"…" : descripcionGoogle}
+        </span>
+      </div>
+      ` : ""}
       ${(!evento.calendarId || evento.soloLectura) ? `<p class="muted" style="margin-top:4px;">Este calendario es de solo lectura: se guarda en la app, pero no se puede escribir de vuelta en Google Calendar.</p>` : ""}
       ` : `
       <p style="margin:0;padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:7px;white-space:pre-wrap;font-size:13px;">${descripcionGoogle.replace(/</g,"&lt;")}</p>
       `}
     </div>
     ` : ""}
-    <div class="field">
-      <label>Nota interna de la app</label>
-      <textarea id="notaEvento" rows="2" placeholder="Notas internas: material especial, punto de encuentro, contacto in situ…" ${isAdmin?"":"disabled"}>${notaActual}</textarea>
-      ${isAdmin?`<button class="btn btn-ghost" id="btnGuardarNota" style="margin-top:6px;">Guardar descripción</button>`:""}
-      ${evento.notaInterna ? `
-      <div style="margin-top:8px;">
-        <span style="display:inline-flex;align-items:center;gap:6px;background:#E4F2E6;border:1px solid var(--teal);color:var(--teal);padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;">
-          ✓ Guardado: ${evento.notaInterna.length>60 ? evento.notaInterna.slice(0,60)+"…" : evento.notaInterna}
-        </span>
-      </div>
-      ` : ""}
-      <p class="muted" style="margin-top:4px;">Esta nota es solo para uso interno de la app; no se envía a Google Calendar.</p>
-    </div>
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
     <div>${asignadosHtml}</div>
     ${isAdmin ? `
@@ -3341,12 +3332,6 @@ function renderAsignarDetalle(eventId){
 
   document.getElementById("btnCerrarDetalle").addEventListener("click", cerrarModalAsignacion);
 
-  const btnGuardarNota = document.getElementById("btnGuardarNota");
-  if(btnGuardarNota){
-    btnGuardarNota.addEventListener("click", ()=>{
-      guardarNotaEvento(eventId, document.getElementById("notaEvento").value);
-    });
-  }
   const btnGuardarDescGoogle = document.getElementById("btnGuardarDescGoogle");
   if(btnGuardarDescGoogle){
     btnGuardarDescGoogle.addEventListener("click", ()=>{
@@ -3501,6 +3486,14 @@ function renderAsignarDetalle(eventId){
       div.classList.toggle("hidden", conflictos.length===0);
       if(conflictos.length){
         div.textContent = `⚠️ No disponible: ya tiene ${conflictos.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}`;
+      }
+    });
+    cont.querySelectorAll(".otras-asignaciones-dia").forEach(div=>{
+      const tid = div.id.replace("otras-","");
+      const otras = obtenerOtrasAsignacionesMismoDia(tid, eventId, fechaEventoIso, inputHorario.value);
+      div.classList.toggle("hidden", otras.length===0);
+      if(otras.length){
+        div.textContent = `🟠 También tiene ese día: ${otras.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}`;
       }
     });
   };
@@ -3702,6 +3695,25 @@ function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNu
 function mensajeConflictosHorario(nombreTecnico, conflictos){
   const detalle = conflictos.map(c => `"${c.evento.summary}" (${c.horario})`).join(", ");
   return `${nombreTecnico} ya está asignado ese día a ${detalle}, y el horario se solapa con esta asignación.\n\n¿Asignar de todas formas?`;
+}
+/* Igual que obtenerConflictosHorario, pero para el caso menos grave: el técnico tiene otra cosa
+   asignada el mismo día, con un horario que NO llega a solaparse (así que en principio sí podría
+   compaginar ambas) — un aviso a tener en cuenta, no un bloqueo. */
+function obtenerOtrasAsignacionesMismoDia(tecnicoId, eventoIdActual, fechaIso, horarioNuevo){
+  const rangoNuevo = parseRangoMinutos(horarioNuevo);
+  const otras = [];
+  eventosDelDia(fechaIso).forEach(([id, ev])=>{
+    if(id === eventoIdActual) return;
+    const datos = STATE.asignaciones[id]?.[tecnicoId];
+    if(!datos) return;
+    const rangoExistente = parseRangoMinutos(datos.horario);
+    if(rangoNuevo && rangoExistente){
+      const seSolapan = rangoNuevo.inicio < rangoExistente.fin && rangoExistente.inicio < rangoNuevo.fin;
+      if(seSolapan) return; // ese caso ya lo cubre el aviso rojo de conflicto
+    }
+    otras.push({ evento: ev, horario: datos.horario || "sin horario" });
+  });
+  return otras;
 }
 
 // Franja de referencia para la mini línea de tiempo (06:00–02:00, cubre turnos hasta bien entrada la noche)
