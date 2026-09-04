@@ -955,7 +955,7 @@
       <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span><span class="tab-badge hidden" id="badgeCambiosEventos"></span><span class="submenu-chevron" id="chevronCalendarios">▸</span></button>
       <div id="submenuCalendarios" class="submenu-calendarios hidden"></div>
       <button data-tab="tecnico"><span class="tab-icon">👤</span><span>Vista técnico</span></button>
-      <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span></button>
+      <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span><span class="tab-badge hidden" id="badgeDescansos"></span></button>
       <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span><span class="tab-badge hidden" id="badgeLibranzas"></span></button>
       <button data-tab="admin" id="tabAdminBtn" class="hidden"><span class="tab-icon">⚙️</span><span>Admin</span></button>
     </nav>
@@ -1050,6 +1050,10 @@
 
   <!-- CUADRANTE -->
   <section id="view-general" class="hidden">
+    <div class="card hidden" id="avisosDescansoCard">
+      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">⚠️ Descanso entre jornadas inferior a 12 horas</h3>
+      <div id="avisosDescansoList"></div>
+    </div>
     <div class="card" style="padding:6px 14px;">
       <div class="row" style="align-items:center;">
         <p class="muted" style="margin:0;flex:1;font-size:13px;">4 semanas visibles (anterior, actual y 2 siguientes) · desliza para ver más</p>
@@ -2766,6 +2770,45 @@ function esFindeOFestivo(fechaIso){
 /* Lista de asignaciones en fin de semana/festivo a las que aún no se les ha puesto libranza
    compensatoria — tanto eventos de calendario como asignaciones de Teletrabajo/Manual/Mites
    hechas a mano en Otras asignaciones. */
+/* Detecta, para cada técnico, los días consecutivos en los que el descanso entre el fin de la
+   jornada de un día y el inicio de la del día siguiente es inferior a 12 horas — igual que se
+   calcula en Vista técnico (misma calcularSegmentosDia), sin contar libranza/vacaciones/permiso/
+   baja médica como "jornada" (esos son ausencia de todo el día, no trabajo). Se revisa una
+   ventana razonable de fechas, ya que muchos días no tienen ningún dato explícito guardado (por
+   ejemplo, la Oficina Scope por defecto) y aun así cuentan para este cálculo. */
+function obtenerDescansosInsuficientes(){
+  const avisos = [];
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const desde = new Date(hoy); desde.setDate(desde.getDate()-14);
+  const hasta = new Date(hoy); hasta.setDate(hasta.getDate()+70);
+
+  Object.entries(STATE.tecnicos).forEach(([tid, t])=>{
+    let diaAnterior = null; // { fechaIso, finJornada }
+    for(let d = new Date(desde); d <= hasta; d.setDate(d.getDate()+1)){
+      const fechaIso = isoDate(d);
+      const segmentos = calcularSegmentosDia(tid, fechaIso).filter(s=> s.tipo!=="todo-el-dia" && s.inicio!=null && s.fin!=null);
+      if(segmentos.length===0){ diaAnterior = null; continue; } // día sin trabajo: no hay jornada que enlazar con la siguiente
+      const inicioJornada = Math.min(...segmentos.map(s=>s.inicio));
+      const finJornada = Math.max(...segmentos.map(s=>s.fin));
+      if(diaAnterior){
+        const esConsecutivo = (new Date(fechaIso) - new Date(diaAnterior.fechaIso)) === 86400000;
+        if(esConsecutivo){
+          const descansoMin = (inicioJornada + 1440) - diaAnterior.finJornada;
+          if(descansoMin < 12*60){
+            avisos.push({
+              tid, nombre: t.nombre,
+              fechaAnterior: diaAnterior.fechaIso, finAnterior: diaAnterior.finJornada,
+              fechaSiguiente: fechaIso, inicioSiguiente: inicioJornada,
+              descansoMin
+            });
+          }
+        }
+      }
+      diaAnterior = { fechaIso, finJornada };
+    }
+  });
+  return avisos.sort((a,b)=> a.fechaAnterior.localeCompare(b.fechaAnterior));
+}
 function obtenerLibranzasPendientes(){
   const pendientes = [];
   Object.entries(STATE.asignaciones).forEach(([eventId, porTecnico])=>{
@@ -2833,6 +2876,50 @@ function renderBannerLibranzas(){
   badge.title = `${pendientes.length} libranza${pendientes.length>1?"s":""} compensatoria${pendientes.length>1?"s":""} pendiente${pendientes.length>1?"s":""} de asignar`;
 }
 
+function renderAvisosDescanso(){
+  const badge = document.getElementById("badgeDescansos");
+  const card = document.getElementById("avisosDescansoCard");
+  const lista = document.getElementById("avisosDescansoList");
+  const avisos = isAdmin ? obtenerDescansosInsuficientes() : [];
+
+  if(badge){
+    if(avisos.length===0){
+      badge.classList.add("hidden");
+      badge.textContent = "";
+    } else {
+      badge.classList.remove("hidden");
+      badge.innerHTML = `⚠️ ${avisos.length}`;
+      badge.title = `${avisos.length} caso${avisos.length>1?"s":""} de descanso entre jornadas inferior a 12 horas`;
+    }
+  }
+  if(!card || !lista) return;
+  if(avisos.length===0){
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  lista.innerHTML = avisos.map((av,idx)=>{
+    const horas = Math.floor(av.descansoMin/60);
+    const minutos = av.descansoMin%60;
+    return `<div class="event-row">
+      <div class="event-fecha">${fmtFecha(av.fechaAnterior)}</div>
+      <div style="flex:1;">
+        <strong>${av.nombre}</strong><br>
+        <span class="muted">Termina a las ${minutosAHora(av.finAnterior%1440)} del ${fmtFecha(av.fechaAnterior)} y empieza a las ${minutosAHora(av.inicioSiguiente%1440)} del ${fmtFecha(av.fechaSiguiente)} — solo ${horas}h ${minutos>0?`${minutos} min`:""} de descanso.</span>
+      </div>
+      <button class="btn btn-teal" data-ver-descanso="${idx}">Ver técnico</button>
+    </div>`;
+  }).join("");
+  lista.querySelectorAll("[data-ver-descanso]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const av = avisos[+btn.dataset.verDescanso];
+      try{ localStorage.setItem("ultimoTecnicoSeleccionado", av.tid); }catch(e){}
+      document.getElementById("selectTecnico").value = av.tid;
+      weekState.tecnico = startOfWeek(parseIsoLocal(av.fechaAnterior));
+      document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
+    });
+  });
+}
 function renderAvisosCambios(){
   const badge = document.getElementById("badgeCambiosEventos");
   const card = document.getElementById("avisosCambiosCard");
@@ -2902,6 +2989,7 @@ function renderAvisosCambios(){
 function render(){
   renderBannerLibranzas();
   renderAvisosCambios();
+  renderAvisosDescanso();
   const detalleCard = document.getElementById("asignarDetalleCard");
   if(eventoSeleccionado && STATE.eventos[eventoSeleccionado]){
     detalleCard.classList.remove("hidden");
