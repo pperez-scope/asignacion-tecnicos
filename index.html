@@ -1528,9 +1528,38 @@ function semanaVisiblePara(weekStartDate){
   if(isAdmin) return true;
   return startOfWeek(weekStartDate) <= limiteVisiblePublicacion();
 }
+const URL_APP = "https://pperez-scope.github.io/asignacion-tecnicos/";
+/* Rango de fechas en formato natural para el cuerpo del email ("24 al 30 de agosto",
+   o "28 de agosto al 3 de septiembre" si la semana cruza de mes). */
+function fmtRangoNatural(lunes){
+  const domingo = new Date(lunes); domingo.setDate(domingo.getDate()+6);
+  const mesL = lunes.toLocaleDateString("es-ES",{month:"long"});
+  const mesD = domingo.toLocaleDateString("es-ES",{month:"long"});
+  if(mesL === mesD) return `${lunes.getDate()} al ${domingo.getDate()} de ${mesL}`;
+  return `${lunes.getDate()} de ${mesL} al ${domingo.getDate()} de ${mesD}`;
+}
+/* Abre el programa de correo con el aviso de publicación de semana ya redactado (asunto, cuerpo,
+   enlace a la app y firma) — el envío final lo hace la propia persona, pulsando "Enviar". */
+function abrirEmailPublicacionSemana(lunesIso){
+  const lunes = parseIsoLocal(lunesIso);
+  const asunto = `Planificación semana del ${fmtWeekRange(lunes)}`;
+  const cuerpo = `Hola a todos,
+
+Ya está disponible la planificación de la semana del ${fmtRangoNatural(lunes)} en la aplicación.
+
+Podéis consultarla desde vuestro dispositivo con normalidad:
+${URL_APP}
+
+Si alguna semana no recibís este correo, no os preocupéis: la planificación se publica también de forma automática cada sábado, así que estará visible igualmente sin necesidad de este aviso.
+
+Un saludo,
+Patri`;
+  window.location.href = `mailto:circular@scopeproducciones.com?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+}
 async function publicarSemana(lunesIso){
   await update(ref(db), { "configuracion/ultimaSemanaPublicadaManual": lunesIso });
   toast("Semana publicada");
+  abrirEmailPublicacionSemana(lunesIso);
 }
 async function despublicarSemana(lunesIso){
   const auto = limiteAutomaticoPublicacion();
