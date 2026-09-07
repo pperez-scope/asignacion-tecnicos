@@ -2587,16 +2587,18 @@ async function actualizarDescripcionEvento(eventId, asignacionesActualizadas){
   const nombres = Object.entries(asign).map(([tid,datos])=>{
     const nombre = STATE.tecnicos[tid]?.nombre;
     if(!nombre) return null;
-    return datos.tipoAsignacion ? `${nombre} (${datos.tipoAsignacion})` : nombre;
+    const rango = rangoEventoConFallback(datos, evento);
+    const horaTxt = rango ? minutosAHora(rango.inicio%1440)+" " : "";
+    return horaTxt + (datos.tipoAsignacion ? `${nombre} (${datos.tipoAsignacion})` : nombre);
   }).filter(Boolean);
 
   if(!evento.calendarId || evento.soloLectura){
     // Calendario de solo lectura (iCal externo, o calendario de Google importado por suscripción,
     // que Google no permite editar aunque tengamos acceso de lectura): no hay forma de escribir en el origen.
     // Guardamos igualmente el bloque de técnicos en la propia app para que se vea en la descripción.
-    const block = `${MARKER_START}\n${nombres.length ? nombres.join(", ") : "(sin asignar)"}\n${MARKER_END}`;
-    const original = (evento.description || "").replace(new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`), "").trim();
-    const nuevaDescripcion = (original ? original+"\n\n" : "") + block;
+    const block = `${MARKER_START}\n${nombres.length ? nombres.join("\n") : "(sin asignar)"}\n${MARKER_END}`;
+    const restoOriginal = (evento.description || "").replace(new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`), "").trim();
+    const nuevaDescripcion = block + (restoOriginal ? "\n\n"+restoOriginal : "");
     await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
     return { escritoEnCalendar:false, motivo: evento.soloLectura ? "El calendario está marcado como de solo lectura." : "Este evento no tiene guardada la conexión de escritura con Google Calendar (prueba a sincronizar de nuevo desde Admin)." };
   }
@@ -2604,9 +2606,10 @@ async function actualizarDescripcionEvento(eventId, asignacionesActualizadas){
   // Traemos la descripción actual real desde Calendar (por si alguien la editó a mano)
   const actual = await calendarFetch(`calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}`);
   const original = actual.description || "";
-  const block = `${MARKER_START}\n${nombres.length ? nombres.join(", ") : "(sin asignar)"}\n${MARKER_END}`;
+  const block = `${MARKER_START}\n${nombres.length ? nombres.join("\n") : "(sin asignar)"}\n${MARKER_END}`;
   const re = new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`);
-  const nuevaDescripcion = re.test(original) ? original.replace(re, block) : (original ? original.trim()+"\n\n" : "") + block;
+  const restoOriginal = original.replace(re, "").trim();
+  const nuevaDescripcion = block + (restoOriginal ? "\n\n"+restoOriginal : "");
 
   await calendarFetch(
     `calendars/${encodeURIComponent(evento.calendarId)}/events/${eventId}?sendUpdates=none`,
@@ -2626,7 +2629,7 @@ async function guardarDescripcionGoogle(eventId, textoNuevo){
   const bloqueActual = matchBloque ? matchBloque[0] : "";
   const textoLimpio = textoNuevo.trim();
   const nuevaDescripcion = bloqueActual
-    ? (textoLimpio ? textoLimpio+"\n\n" : "") + bloqueActual
+    ? bloqueActual + (textoLimpio ? "\n\n"+textoLimpio : "")
     : textoLimpio;
 
   if(!evento.calendarId || evento.soloLectura){
@@ -3858,6 +3861,7 @@ function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNu
   }
   eventosDelDia(fechaIso).forEach(([id, ev])=>{
     if(id === eventoIdActual) return;
+    if(ev.modalidad === "online") return; // online no bloquea: es compatible aunque se solape en horario
     const datos = STATE.asignaciones[id]?.[tecnicoId];
     if(!datos) return;
     const rangoExistente = parseRangoMinutos(datos.horario);
@@ -3882,7 +3886,7 @@ function obtenerOtrasAsignacionesMismoDia(tecnicoId, eventoIdActual, fechaIso, h
     const datos = STATE.asignaciones[id]?.[tecnicoId];
     if(!datos) return;
     const rangoExistente = parseRangoMinutos(datos.horario);
-    if(rangoNuevo && rangoExistente){
+    if(rangoNuevo && rangoExistente && ev.modalidad !== "online"){
       const seSolapan = rangoNuevo.inicio < rangoExistente.fin && rangoExistente.inicio < rangoNuevo.fin;
       if(seSolapan) return; // ese caso ya lo cubre el aviso rojo de conflicto
     }
