@@ -2576,7 +2576,7 @@ document.getElementById("btnDescargarInforme").addEventListener("click", ()=>{
 /* Actualiza (o inserta) el bloque de técnicos en la descripción del evento en Google Calendar */
 async function actualizarDescripcionEvento(eventId, asignacionesActualizadas){
   const evento = STATE.eventos[eventId];
-  if(!evento) return;
+  if(!evento) return { escritoEnCalendar:false };
   // Si quien llama ya conoce el estado correcto (porque acaba de construirlo, antes de que el
   // listener en tiempo real de Firebase confirme el cambio en este mismo navegador), lo usamos
   // directamente en vez de leer STATE.asignaciones — leerlo aquí justo después de escribir podía
@@ -2598,7 +2598,7 @@ async function actualizarDescripcionEvento(eventId, asignacionesActualizadas){
     const original = (evento.description || "").replace(new RegExp(`${escapeRegex(MARKER_START)}[\\s\\S]*?${escapeRegex(MARKER_END)}`), "").trim();
     const nuevaDescripcion = (original ? original+"\n\n" : "") + block;
     await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
-    return;
+    return { escritoEnCalendar:false, motivo: evento.soloLectura ? "El calendario está marcado como de solo lectura." : "Este evento no tiene guardada la conexión de escritura con Google Calendar (prueba a sincronizar de nuevo desde Admin)." };
   }
 
   // Traemos la descripción actual real desde Calendar (por si alguien la editó a mano)
@@ -2613,6 +2613,7 @@ async function actualizarDescripcionEvento(eventId, asignacionesActualizadas){
     { method:"PATCH", body: JSON.stringify({ description: nuevaDescripcion }) }
   );
   await update(ref(db, `eventos/${eventId}`), { description: nuevaDescripcion });
+  return { escritoEnCalendar:true };
 }
 /* Guarda la parte "original" de la descripción (la que ve y edita el usuario en la app),
    conservando intacto el bloque de técnicos asignados que la app gestiona aparte, y lo escribe
@@ -2666,10 +2667,13 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
   asignacionesLista.forEach(({tid, tipoAsignacion})=>{
     asignacionesActualizadas[tid] = { horario: horario||"", descansoMinutos, tipoAsignacion: tipoAsignacion||"", lugar: lugar||"", sala: sala||"" };
   });
-  try{ await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
+  let resultadoDesc;
+  try{ resultadoDesc = await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
   const n = asignacionesLista.length;
-  toast(`${n} técnico${n>1?"s":""} asignado${n>1?"s":""}`);
+  toast(resultadoDesc?.escritoEnCalendar===false
+    ? `${n} técnico${n>1?"s":""} asignado${n>1?"s":""} en la app, pero no en Calendar: ${resultadoDesc.motivo}`
+    : `${n} técnico${n>1?"s":""} asignado${n>1?"s":""}`);
 }
 async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala, libranzaCompensatoria){
   const updates = {
@@ -2686,9 +2690,10 @@ async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipo
   }
   await update(ref(db), dbUpdates);
   const asignacionesActualizadas = { ...(STATE.asignaciones[eventId]||{}), [tecnicoId]: updates };
-  try{ await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
+  let resultadoDesc;
+  try{ resultadoDesc = await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
   catch(err){ toast("Guardado en la app, pero falló Calendar: "+err.message); return; }
-  toast("Técnico asignado");
+  toast(resultadoDesc?.escritoEnCalendar===false ? `Técnico asignado en la app, pero no en Calendar: ${resultadoDesc.motivo}` : "Técnico asignado");
 }
 /* Cuando se asigna a un técnico a pesar de tener un conflicto de horario con otro evento ese
    mismo día, el evento anterior se le desasigna automáticamente (ya no puede estar en los dos
@@ -2750,9 +2755,11 @@ async function desasignarTecnico(eventId, tecnicoId){
   }
   const asignacionesActualizadas = { ...(STATE.asignaciones[eventId]||{}) };
   delete asignacionesActualizadas[tecnicoId];
-  try{ await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
+  let resultadoDesc;
+  try{ resultadoDesc = await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
   catch(err){ toast("Quitado en la app, pero falló Calendar: "+err.message); return; }
-  toast(libranzaEliminada ? "Técnico desasignado y libranza compensatoria eliminada" : (libranzaYaDisfrutada ? "Técnico desasignado — la libranza ya disfrutada se mantiene" : "Técnico desasignado"));
+  const baseMsg = libranzaEliminada ? "Técnico desasignado y libranza compensatoria eliminada" : (libranzaYaDisfrutada ? "Técnico desasignado — la libranza ya disfrutada se mantiene" : "Técnico desasignado");
+  toast(resultadoDesc?.escritoEnCalendar===false ? `${baseMsg} (en la app; no en Calendar: ${resultadoDesc.motivo})` : baseMsg);
 }
 
 /* ---------- AUSENCIAS ---------- */
