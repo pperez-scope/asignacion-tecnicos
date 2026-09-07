@@ -2835,6 +2835,19 @@ function notasEnRango(tecnicoId, fechaDesde, fechaHasta){
 function modalidadCompatible(modalidad){
   return modalidad==="online" || modalidad==="oficina" || modalidad==="visita";
 }
+/* Un evento presencial siempre ocupa al técnico físicamente y sustituye a la base (Oficina
+   Scope/Teletrabajo/Manual) ese día. Una visita técnica normalmente es compatible (convive con
+   la base, como una online) porque suele ser una gestión puntual y corta — pero si para ese
+   técnico dura más de 4 horas, en la práctica ocupa la mayor parte de la jornada, así que a
+   partir de ahí se comporta igual que un presencial: sustituye a la base por completo. */
+function eventoReemplazaBase(ev, datos){
+  if(!modalidadCompatible(ev.modalidad)) return true;
+  if(ev.modalidad==="visita"){
+    const rango = rangoEventoConFallback(datos, ev);
+    if(rango && (rango.fin-rango.inicio) > 4*60) return true;
+  }
+  return false;
+}
 /* A diferencia de modalidadCompatible (que decide si el evento convive con la base del técnico
    en Vista técnico y en el cómputo de horas), esta decide específicamente el color que se
    muestra en el Cuadrante: "visita técnica" sí convive con la base como online/oficina, pero en
@@ -3931,7 +3944,7 @@ function horasDesdeTextoLibre(str){
 function horasDiaTecnico(tecnicoId, fechaIso){
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
-  const todosOnline = eventosDia.length>0 && eventosDia.every(([,ev])=> modalidadCompatible(ev.modalidad));
+  const todosOnline = eventosDia.length>0 && eventosDia.every(([id,ev])=> !eventoReemplazaBase(ev, STATE.asignaciones[id][tecnicoId]));
   const hayEventoPresencial = eventosDia.length>0 && !todosOnline;
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
 
@@ -4012,7 +4025,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
-  const hayPresencial = eventosDia.some(([,ev])=> !modalidadCompatible(ev.modalidad));
+  const hayPresencial = eventosDia.some(([id,ev])=> eventoReemplazaBase(ev, STATE.asignaciones[id][tecnicoId]));
   const segmentos = [];
 
   // Evento(s) presencial(es): ocupan al técnico físicamente, van tal cual y no hay base debajo.
