@@ -2713,12 +2713,46 @@ async function resolverConflictosYAvisar(tecnicoId, conflictos, eventoNuevoId){
   }
 }
 async function desasignarTecnico(eventId, tecnicoId){
+  // Si el técnico tenía una libranza compensatoria vinculada a este evento (por trabajar en fin
+  // de semana/festivo) y esa libranza todavía no ha llegado, ya no tiene sentido mantenerla al
+  // quitarle la asignación — se elimina también. Pero si la libranza ya pasó, el técnico ya
+  // disfrutó de ese día libre (por ejemplo, libró el lunes por un sábado que luego se canceló a
+  // mitad de semana): no se le puede "quitar" un descanso ya disfrutado, así que se deja intacta
+  // y se avisa de que hace falta encontrarle otro evento en fin de semana/festivo que la respalde.
+  // El aviso de "libranza pendiente" (para quien no llegó a tener ninguna vinculada) no necesita
+  // limpieza aparte: se calcula sobre la marcha a partir de las asignaciones existentes, así que
+  // desaparece solo en cuanto la asignación deja de existir.
+  const datosAntes = STATE.asignaciones[eventId]?.[tecnicoId];
+  const eventoAnterior = STATE.eventos[eventId];
   await remove(ref(db, `asignaciones/${eventId}/${tecnicoId}`));
+  let libranzaEliminada = false, libranzaYaDisfrutada = false;
+  if(datosAntes?.libranzaCompensatoria && datosAntes.libranzaCompensatoria !== "no_aplica"){
+    const fechaLibranza = datosAntes.libranzaCompensatoria;
+    if(STATE.ausencias[tecnicoId]?.[fechaLibranza]?.tipo === "libranza"){
+      if(fechaLibranza < isoDate(new Date())){
+        libranzaYaDisfrutada = true;
+        const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || tecnicoId;
+        const avisoKey = push(ref(db,"avisosCambios")).key;
+        await update(ref(db), { [`avisosCambios/${avisoKey}`]: {
+          eventId, tipo:"libranza_disfrutada",
+          resumen: eventoAnterior?.summary || "(evento sin título)",
+          calendario: eventoAnterior?.calendario,
+          fechaAntigua: eventoAnterior?.start, fechaNueva: null,
+          tecnicos: [nombreTecnico],
+          detalleReasignado: `${nombreTecnico} ya disfrutó la libranza del ${fmtFecha(fechaLibranza)} (compensaba este evento, que se le ha quitado). Como el descanso ya se tomó, no se ha eliminado — busca otro evento en fin de semana o festivo que la respalde.`,
+          creado: Date.now()
+        }});
+      } else {
+        await remove(ref(db, `ausencias/${tecnicoId}/${fechaLibranza}`));
+        libranzaEliminada = true;
+      }
+    }
+  }
   const asignacionesActualizadas = { ...(STATE.asignaciones[eventId]||{}) };
   delete asignacionesActualizadas[tecnicoId];
   try{ await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
   catch(err){ toast("Quitado en la app, pero falló Calendar: "+err.message); return; }
-  toast("Técnico desasignado");
+  toast(libranzaEliminada ? "Técnico desasignado y libranza compensatoria eliminada" : (libranzaYaDisfrutada ? "Técnico desasignado — la libranza ya disfrutada se mantiene" : "Técnico desasignado"));
 }
 
 /* ---------- AUSENCIAS ---------- */
@@ -2986,10 +3020,10 @@ function renderAvisosCambios(){
   card.classList.remove("hidden");
   lista.innerHTML = avisos.map(([id, av])=>{
     const tecnicosTxt = av.tecnicos && av.tecnicos.length ? av.tecnicos.join(", ") : "sin técnicos con nombre";
-    const icono = av.tipo==="eliminado" ? "🗑️" : (av.tipo==="reasignado" ? "🔁" : "🔄");
+    const icono = av.tipo==="eliminado" ? "🗑️" : (av.tipo==="reasignado" ? "🔁" : (av.tipo==="libranza_disfrutada" ? "🏖️" : "🔄"));
     const detalle = av.tipo==="eliminado"
       ? `Se ha borrado o cancelado en Calendar. Estaba el ${fmtFecha(av.fechaAntigua)} a las ${fmtHora(av.fechaAntigua)}.`
-      : av.tipo==="reasignado"
+      : (av.tipo==="reasignado" || av.tipo==="libranza_disfrutada")
       ? av.detalleReasignado
       : `Ha cambiado de ${fmtFecha(av.fechaAntigua)} ${fmtHora(av.fechaAntigua)} a ${fmtFecha(av.fechaNueva)} ${fmtHora(av.fechaNueva)}.`;
     const conflictosHtml = (av.conflictosPorTecnico && av.conflictosPorTecnico.length) ? `
@@ -3002,7 +3036,7 @@ function renderAvisosCambios(){
       <div class="event-fecha">${icono}</div>
       <div style="flex:1;">
         <strong>${av.resumen}</strong> · ${CALENDARIOS[av.calendario]?.nombre || av.calendario}<br>
-        <span class="muted">${detalle}${av.tipo!=="reasignado"?` Asignado a: ${tecnicosTxt}.`:""}</span>
+        <span class="muted">${detalle}${(av.tipo!=="reasignado" && av.tipo!=="libranza_disfrutada")?` Asignado a: ${tecnicosTxt}.`:""}</span>
         ${conflictosHtml}
       </div>
       ${av.tipo!=="eliminado" && STATE.eventos[av.eventId] ? `<button class="btn btn-teal" data-ver-aviso="${id}">Ver evento</button>` : ""}
