@@ -4338,22 +4338,14 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
    al evento en Calendarios si ese día tiene uno, o al editor de día de Vista técnico si no. */
 function irAEditarDesdeCuadrante(tid, fechaIso){
   if(!isAdmin) return;
-  const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tid]);
-  if(eventosDia.length){
-    const [id, ev] = eventosDia[0];
-    eventoSeleccionado = id; editandoTecnicoId = null;
-    weekState.asignar = startOfWeek(new Date(ev.start));
-    mesAsignacionesActual = new Date(new Date(ev.start).getFullYear(), new Date(ev.start).getMonth(), 1);
-    render();
-  } else {
-    document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
-    const selTec = document.getElementById("selectTecnico");
-    if(selTec && selTec.value !== tid){
-      selTec.value = tid;
-      renderVistaTecnico();
-    }
-    abrirEditorDiaTecnico(tid, fechaIso);
+  document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
+  const selTec = document.getElementById("selectTecnico");
+  if(selTec && selTec.value !== tid){
+    selTec.value = tid;
   }
+  tecnicoModo = "semana";
+  weekState.tecnico = startOfWeek(parseIsoLocal(fechaIso));
+  renderVistaTecnico();
 }
 
 function abrirEditorDiaTecnico(tecnicoId, fechaIso){
