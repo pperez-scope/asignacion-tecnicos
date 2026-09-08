@@ -1054,6 +1054,10 @@
       <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">⚠️ Descanso entre jornadas inferior a 12 horas</h3>
       <div id="avisosDescansoList"></div>
     </div>
+    <div class="card hidden" id="avisosHorasCard">
+      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">⚠️ Exceso de horas mensuales</h3>
+      <div id="avisosHorasList"></div>
+    </div>
     <div class="card" style="padding:6px 14px;">
       <div class="row" style="align-items:center;">
         <p class="muted" style="margin:0;flex:1;font-size:13px;">4 semanas visibles (anterior, actual y 2 siguientes) · desliza para ver más</p>
@@ -2879,6 +2883,35 @@ function esFindeOFestivo(fechaIso){
    baja médica como "jornada" (esos son ausencia de todo el día, no trabajo). Se revisa una
    ventana razonable de fechas, ya que muchos días no tienen ningún dato explícito guardado (por
    ejemplo, la Oficina Scope por defecto) y aun así cuentan para este cálculo. */
+/* Detecta, para el mes actual y el anterior, qué técnicos superan las horas que les corresponden
+   ese mes según su jornada — horasMaximasTecnico ya tiene en cuenta las jornadas reducidas
+   (Cristina Linaje, Patricia Pérez de la Manga...), así que el límite es distinto para cada una. */
+function obtenerExcesosHorasMensuales(){
+  const avisos = [];
+  const hoy = new Date();
+  const mesAnterior = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1);
+  const meses = [
+    { year: mesAnterior.getFullYear(), month: mesAnterior.getMonth()+1 },
+    { year: hoy.getFullYear(), month: hoy.getMonth()+1 }
+  ];
+  Object.entries(STATE.tecnicos).forEach(([tid, t])=>{
+    meses.forEach(({year, month})=>{
+      const inicioMes = new Date(year, month-1, 1);
+      const finMes = new Date(year, month, 0);
+      const diasEnMes = finMes.getDate();
+      let totalReal = 0;
+      for(let day=1; day<=diasEnMes; day++){
+        const fechaIso = `${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        totalReal += horasDiaTecnico(tid, fechaIso);
+      }
+      const maxEsperado = horasMaximasTecnico(t.nombre, inicioMes, finMes);
+      if(totalReal > maxEsperado + 0.05){
+        avisos.push({ tid, nombre:t.nombre, year, month, totalReal, maxEsperado, exceso: totalReal-maxEsperado });
+      }
+    });
+  });
+  return avisos.sort((a,b)=> b.exceso-a.exceso);
+}
 function obtenerDescansosInsuficientes(){
   const avisos = [];
   const hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -2983,25 +3016,28 @@ function renderAvisosDescanso(){
   const badge = document.getElementById("badgeDescansos");
   const card = document.getElementById("avisosDescansoCard");
   const lista = document.getElementById("avisosDescansoList");
-  const avisos = isAdmin ? obtenerDescansosInsuficientes() : [];
+  const avisosDescanso = isAdmin ? obtenerDescansosInsuficientes() : [];
+  const avisosHoras = isAdmin ? obtenerExcesosHorasMensuales() : [];
 
   if(badge){
-    if(avisos.length===0){
+    const total = avisosDescanso.length + avisosHoras.length;
+    if(total===0){
       badge.classList.add("hidden");
       badge.textContent = "";
     } else {
       badge.classList.remove("hidden");
-      badge.innerHTML = `⚠️ ${avisos.length}`;
-      badge.title = `${avisos.length} caso${avisos.length>1?"s":""} de descanso entre jornadas inferior a 12 horas`;
+      badge.innerHTML = `⚠️ ${total}`;
+      badge.title = `${avisosDescanso.length} caso${avisosDescanso.length!==1?"s":""} de descanso insuficiente · ${avisosHoras.length} caso${avisosHoras.length!==1?"s":""} de exceso de horas`;
     }
   }
+  renderAvisosHorasMensuales(avisosHoras);
   if(!card || !lista) return;
-  if(avisos.length===0){
+  if(avisosDescanso.length===0){
     card.classList.add("hidden");
     return;
   }
   card.classList.remove("hidden");
-  lista.innerHTML = avisos.map((av,idx)=>{
+  lista.innerHTML = avisosDescanso.map((av,idx)=>{
     const horas = Math.floor(av.descansoMin/60);
     const minutos = av.descansoMin%60;
     return `<div class="event-row">
@@ -3015,10 +3051,41 @@ function renderAvisosDescanso(){
   }).join("");
   lista.querySelectorAll("[data-ver-descanso]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      const av = avisos[+btn.dataset.verDescanso];
+      const av = avisosDescanso[+btn.dataset.verDescanso];
       try{ localStorage.setItem("ultimoTecnicoSeleccionado", av.tid); }catch(e){}
       document.getElementById("selectTecnico").value = av.tid;
       weekState.tecnico = startOfWeek(parseIsoLocal(av.fechaAnterior));
+      document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
+    });
+  });
+}
+const NOMBRES_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+function renderAvisosHorasMensuales(avisos){
+  const card = document.getElementById("avisosHorasCard");
+  const lista = document.getElementById("avisosHorasList");
+  if(!card || !lista) return;
+  if(avisos.length===0){
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  lista.innerHTML = avisos.map((av,idx)=>`
+    <div class="event-row">
+      <div class="event-fecha">${NOMBRES_MES[av.month-1]} ${av.year}</div>
+      <div style="flex:1;">
+        <strong>${av.nombre}</strong><br>
+        <span class="muted">${fmtHorasHHMM(av.totalReal)} trabajadas de un máximo de ${fmtHorasHHMM(av.maxEsperado)} ese mes — ${fmtHorasHHMM(av.exceso)} de exceso.</span>
+      </div>
+      <button class="btn btn-teal" data-ver-horas="${idx}">Ver técnico</button>
+    </div>
+  `).join("");
+  lista.querySelectorAll("[data-ver-horas]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const av = avisos[+btn.dataset.verHoras];
+      try{ localStorage.setItem("ultimoTecnicoSeleccionado", av.tid); }catch(e){}
+      document.getElementById("selectTecnico").value = av.tid;
+      tecnicoModo = "mes";
+      mesTecnicoActual = new Date(av.year, av.month-1, 1);
       document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
     });
   });
