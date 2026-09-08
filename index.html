@@ -1720,7 +1720,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
   const dias = [];
   for(let i=0;i<7;i++){ const d=new Date(weekStart); d.setDate(d.getDate()+i); dias.push(d); }
   const hoyIso = isoDate(new Date());
-  const PX_POR_MIN = 0.9; // ~54px por hora
+  const PX_POR_MIN = 0.55; // ~33px por hora
   const ALTO_TOTAL = (TIMELINE_FIN-TIMELINE_INICIO)*PX_POR_MIN;
 
   let html = `<div class="week-nav">
@@ -1797,13 +1797,17 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
       const cubierto = nTec>0;
       const top = (_inicio-TIMELINE_INICIO)*PX_POR_MIN;
       const alto = Math.max(16, (_fin-_inicio)*PX_POR_MIN);
-      const ancho = 100/_totalCarriles;
-      const izq = ancho*_carril;
+      // En vez de repartir el ancho a partes iguales entre carriles (columnas estrechas), cada
+      // evento se muestra ancho y los solapados se desplazan un poco entre sí, como en Google
+      // Calendar — más fácil de leer que columnas finas cuando hay dos o tres eventos a la vez.
+      const desplazamiento = _totalCarriles>1 ? Math.min(22, 60/_totalCarriles) : 0;
+      const ancho = Math.max(45, 100 - (_totalCarriles-1)*desplazamiento);
+      const izq = _carril*desplazamiento;
       const colorEvento = colorFor(ev.calendario);
       const estilo = cubierto
         ? `border-left-color:${colorEvento};`
         : `border-left-color:${colorEvento};border-left-style:dashed;`;
-      html += `<div class="hcal-event ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="top:${top}px;height:${alto}px;left:${izq}%;width:calc(${ancho}% - 2px);${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">
+      html += `<div class="hcal-event ${clickable?'':'no-click'} ${eventoSeleccionado===id?'selected':''}" style="top:${top}px;height:${alto}px;left:${izq}%;width:calc(${ancho}% - 2px);z-index:${_carril+1};${estilo}" ${clickable?`data-event-id="${id}"`:""} title="${ev.summary}">
         <span class="hcal-event-time">${fmtHora(ev.start)}</span>
         <span class="hcal-event-title">${ev.summary}</span>
       </div>`;
