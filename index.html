@@ -1724,6 +1724,62 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
   const dias = [];
   for(let i=0;i<7;i++){ const d=new Date(weekStart); d.setDate(d.getDate()+i); dias.push(d); }
   const hoyIso = isoDate(new Date());
+
+  const esMovil = window.innerWidth < 700;
+  if(esMovil){
+    let htmlMovil = `<div class="week-nav">
+        <button class="btn btn-ghost" data-week-nav="-1">‹ Semana anterior</button>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <div class="week-range">${fmtWeekRange(weekStart)}</div>
+          ${weekKey==="asignar" ? segmentoVistaAsignarHTML() : ""}
+        </div>
+        <button class="btn btn-ghost" data-week-nav="1">Semana siguiente ›</button>
+      </div><div class="month-grid tecnico-week-grid" style="grid-template-columns:1fr;">`;
+    dias.forEach(d=>{
+      const diaIso = isoDate(d);
+      const eventosDia = eventosFiltrados
+        .filter(([,ev])=> (ev.start||"").slice(0,10) === diaIso)
+        .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
+      const diaSemanaTxt = d.toLocaleDateString("es-ES",{weekday:"short"});
+      htmlMovil += `<div class="day-cell ${diaIso===hoyIso?'today':''}" style="min-height:0;">
+        <div class="day-num"><span class="day-num-dow">${diaSemanaTxt}</span> ${d.getDate()}</div>
+        ${eventosDia.map(([id,ev])=>{
+          const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
+          const cubierto = nTec>0;
+          const colorEvento = colorFor(ev.calendario);
+          return `<div class="turno-block ${clickable?'turno-block-clicable':''}" style="border-left-color:${colorEvento};${cubierto?'':'border-left-style:dashed;'}" ${clickable?`data-event-id="${id}"`:""}>
+            <div class="turno-horario">${fmtHora(ev.start)}${ev.end?` → ${fmtHora(ev.end)}`:""}</div>
+            <div class="turno-cliente">${ev.summary}</div>
+            ${cubierto?"":`<div class="muted" style="color:var(--danger);font-size:10px;font-weight:700;">Sin cubrir</div>`}
+          </div>`;
+        }).join("") || `<p class="muted" style="margin:4px 0;font-size:11px;">—</p>`}
+      </div>`;
+    });
+    htmlMovil += `</div>`;
+    const contMovil = document.getElementById(containerId);
+    contMovil.innerHTML = htmlMovil;
+    if(weekKey==="asignar") wireSegmentoVistaAsignar(contMovil);
+    contMovil.querySelectorAll("[data-week-nav]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const dias = parseInt(btn.dataset.weekNav,10) * 7;
+        const nueva = new Date(weekState[weekKey]);
+        nueva.setDate(nueva.getDate()+dias);
+        weekState[weekKey] = nueva;
+        render();
+      });
+    });
+    if(clickable){
+      contMovil.querySelectorAll("[data-event-id]").forEach(card=>{
+        card.addEventListener("click", ()=>{
+          eventoSeleccionado = card.dataset.eventId; editandoTecnicoId = null;
+          document.getElementById("asignarDetalleCard").classList.remove("hidden");
+          renderAsignarDetalle(eventoSeleccionado);
+        });
+      });
+    }
+    return;
+  }
+
   const PX_POR_MIN = 0.8; // 48px por hora
   const ALTO_TOTAL = (TIMELINE_FIN-TIMELINE_INICIO)*PX_POR_MIN;
 
@@ -3183,6 +3239,9 @@ window.addEventListener("resize", ()=>{
   resizeCuadranteTimeout = setTimeout(()=>{
     if(document.querySelector('nav.tabs button[data-tab="general"]')?.classList.contains("active")){
       renderVistaGeneral();
+    }
+    if(document.querySelector('nav.tabs button[data-tab="asignar"]')?.classList.contains("active")){
+      renderAsignar();
     }
   }, 200);
 });
