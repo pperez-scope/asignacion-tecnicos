@@ -1720,7 +1720,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
   const dias = [];
   for(let i=0;i<7;i++){ const d=new Date(weekStart); d.setDate(d.getDate()+i); dias.push(d); }
   const hoyIso = isoDate(new Date());
-  const PX_POR_MIN = 0.7; // ~42px por hora
+  const PX_POR_MIN = 0.8; // 48px por hora
   const ALTO_TOTAL = (TIMELINE_FIN-TIMELINE_INICIO)*PX_POR_MIN;
 
   let html = `<div class="week-nav">
