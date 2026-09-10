@@ -1103,6 +1103,10 @@
           <p class="muted" id="syncStatus" style="white-space:pre-line;"></p>
         </div>
         <div class="card">
+          <p class="muted" style="margin-top:0;">La sincronización normal solo mira desde hoy hacia delante. Usa este botón para traer también los eventos pasados desde el 1 de agosto hasta hoy (por ejemplo, para que las reglas de técnicos necesarios o los informes tengan en cuenta ese periodo).</p>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSyncDesdeAgosto">Sincronizar eventos pasados desde el 1 de agosto</button>
+        </div>
+        <div class="card">
           <p class="muted" style="margin-top:0;">Carga inicial de la lista de técnicos (solo hace falta una vez).</p>
           <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnSeedTecnicos">Cargar técnicos iniciales</button>
         </div>
@@ -2431,8 +2435,8 @@ function detectarEventoEliminado(id, eventoAntiguo){
   };
 }
 
-async function syncCalendarioIcs(claveCal, calInfo){
-  const inicioVentana = new Date();
+async function syncCalendarioIcs(claveCal, calInfo, fechaDesde){
+  const inicioVentana = fechaDesde ? new Date(fechaDesde) : new Date();
   inicioVentana.setHours(0,0,0,0);
   const timeMax = new Date(Date.now() + 1000*60*60*24*70);
   const texto = await fetchTextoIcs(calInfo.icsUrl);
@@ -2485,8 +2489,8 @@ async function syncCalendarioIcs(claveCal, calInfo){
   return { sincronizados: fetchedIds.size, borrados, avisoRecurrentes: recurrentesSinExpandir>0, diagnostico };
 }
 
-async function syncCalendario(claveCal, calInfo){
-  const inicioVentana = new Date();
+async function syncCalendario(claveCal, calInfo, fechaDesde){
+  const inicioVentana = fechaDesde ? new Date(fechaDesde) : new Date();
   inicioVentana.setHours(0,0,0,0);
   const timeMin = inicioVentana.toISOString();
   const timeMax = new Date(Date.now() + 1000*60*60*24*70).toISOString(); // 10 semanas vista
@@ -2545,7 +2549,7 @@ async function syncCalendario(claveCal, calInfo){
 /* Sincroniza todos los calendarios configurados. Se usa desde el botón de Admin,
    desde el botón rápido de la cabecera, y desde el auto-sync periódico. */
 let sincronizando = false;
-async function sincronizarTodosLosCalendarios(origen="manual"){
+async function sincronizarTodosLosCalendarios(origen="manual", fechaDesde){
   if(sincronizando) return;
   sincronizando = true;
   const statusEl = document.getElementById("syncStatus");
@@ -2559,7 +2563,7 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
       try{
         let r;
         if(info.tipo === "ics"){
-          r = await syncCalendarioIcs(clave, info);
+          r = await syncCalendarioIcs(clave, info, fechaDesde);
           if(r.avisoRecurrentes) avisos.push(`${info.nombre}: tiene eventos recurrentes (semanales, mensuales…) que de momento solo se sincronizan con su primera fecha, no con todas las repeticiones.`);
           if(r.diagnostico) diagnosticos.push(r.diagnostico);
         } else {
@@ -2567,7 +2571,7 @@ async function sincronizarTodosLosCalendarios(origen="manual"){
             errores.push(`${info.nombre}: inicia sesión como admin para sincronizar este calendario de Google.`);
             continue;
           }
-          r = await syncCalendario(clave, info);
+          r = await syncCalendario(clave, info, fechaDesde);
           if(r.diagnosticoAdjuntos) diagnosticos.push(r.diagnosticoAdjuntos);
         }
         total += r.sincronizados;
@@ -2605,6 +2609,11 @@ function detenerAutoSync(){
 }
 
 document.getElementById("btnSync").addEventListener("click", ()=> sincronizarTodosLosCalendarios("manual"));
+document.getElementById("btnSyncDesdeAgosto").addEventListener("click", ()=>{
+  const hoy = new Date();
+  const primeroDeAgosto = new Date(hoy.getFullYear(), 7, 1); // mes 7 = agosto (0-indexado)
+  sincronizarTodosLosCalendarios("manual", primeroDeAgosto);
+});
 
 /* ---------- Pantalla dividida (dos paneles independientes de la propia app, vía iframes) ---------- */
 function actualizarFrameSplit(letra){
