@@ -2282,7 +2282,8 @@ async function syncCalendarioIcs(claveCal, calInfo){
       modalidad: anterior.modalidad || "",
       excluirInforme: !!anterior.excluirInforme,
       excluirSinCubrir: !!anterior.excluirSinCubrir,
-      notaInterna: anterior.notaInterna || ""
+      notaInterna: anterior.notaInterna || "",
+      requisitos: anterior.requisitos || []
     };
     const aviso = detectarCambioHorarioEvento(idSeguro, STATE.eventos[idSeguro], eventoNuevo);
     if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
@@ -2334,7 +2335,8 @@ async function syncCalendario(claveCal, calInfo){
       modalidad: anterior.modalidad || "",
       excluirInforme: !!anterior.excluirInforme,
       excluirSinCubrir: !!anterior.excluirSinCubrir,
-      notaInterna: anterior.notaInterna || ""
+      notaInterna: anterior.notaInterna || "",
+      requisitos: anterior.requisitos || []
     };
     const aviso = detectarCambioHorarioEvento(ev.id, STATE.eventos[ev.id], eventoNuevo);
     if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
