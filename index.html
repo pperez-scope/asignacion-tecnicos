@@ -1404,6 +1404,31 @@ const TIPOS_ASIGNACION = [
   "VÍDEO","REALIZACIÓN","SONIDO","LUCES","TCO SUPERVISOR","TCO AUDIOVISUAL",
   "VÍDEO/LUCES","OP. CAM","FOTO","PRODUCCIÓN","EDICIÓN","ADMINISTRACIÓN","GRAFISMO"
 ];
+// Valor especial que se guarda como "horario" de una asignación cuando todavía no se sabe la
+// hora de citación exacta. Se trata como "sin horario" a efectos de cálculos (duración, horas,
+// solapamientos...), pero se muestra con este texto en vez de una hora, y mantiene el evento en
+// "Sin cubrir" hasta que se sustituya por un horario real.
+const HORARIO_POR_CONFIRMAR = "POR_CONFIRMAR";
+function textoHorario(horario){
+  return horario===HORARIO_POR_CONFIRMAR ? "Por confirmar horario de citación" : horario;
+}
+/* Un evento está realmente cubierto cuando: tiene al menos un técnico asignado, ninguno de ellos
+   tiene el horario pendiente de confirmar, y (si el evento define técnicos necesarios por
+   categoría) se cumple la cantidad pedida de cada categoría. Mientras no se cumpla todo esto, el
+   evento se sigue mostrando en "Sin cubrir" para no olvidarse de completarlo. */
+function eventoEstaCubierto(eventId){
+  const asign = STATE.asignaciones[eventId] || {};
+  const datosAsignados = Object.values(asign);
+  if(datosAsignados.length===0) return false;
+  if(datosAsignados.some(d=> d.horario===HORARIO_POR_CONFIRMAR)) return false;
+  const requisitos = STATE.eventos[eventId]?.requisitos || [];
+  if(requisitos.length===0) return true;
+  const conteoPorTipo = {};
+  datosAsignados.forEach(d=>{
+    if(d.tipoAsignacion) conteoPorTipo[d.tipoAsignacion] = (conteoPorTipo[d.tipoAsignacion]||0) + 1;
+  });
+  return requisitos.every(r=> (conteoPorTipo[r.tipo]||0) >= r.cantidad);
+}
 
 /* ---------- INIT ---------- */
 const app = initializeApp(firebaseConfig);
@@ -3246,18 +3271,39 @@ window.addEventListener("resize", ()=>{
   }, 200);
 });
 
+/* Explica el motivo concreto por el que un evento con alguna asignación sigue sin cubrir del
+   todo (para mostrarlo en la lista de "Sin cubrir"). Devuelve null si no hay ningún motivo que
+   explicar (por ejemplo, si no hay ni un solo técnico asignado todavía). */
+function motivoSinCubrir(eventId){
+  const asign = STATE.asignaciones[eventId] || {};
+  const datosAsignados = Object.values(asign);
+  if(datosAsignados.length===0) return null;
+  if(datosAsignados.some(d=> d.horario===HORARIO_POR_CONFIRMAR)) return "⏱️ Horario de citación por confirmar";
+  const requisitos = STATE.eventos[eventId]?.requisitos || [];
+  if(requisitos.length===0) return null;
+  const conteoPorTipo = {};
+  datosAsignados.forEach(d=>{
+    if(d.tipoAsignacion) conteoPorTipo[d.tipoAsignacion] = (conteoPorTipo[d.tipoAsignacion]||0) + 1;
+  });
+  const faltantes = requisitos
+    .map(r=> ({ tipo:r.tipo, faltan: r.cantidad - (conteoPorTipo[r.tipo]||0) }))
+    .filter(f=> f.faltan>0);
+  return faltantes.length ? `👥 Faltan: ${faltantes.map(f=>`${f.faltan} ${f.tipo}`).join(", ")}` : null;
+}
 function renderSinCubrir(){
   const cont = document.getElementById("sincubrirList");
   const hoyIso = isoDate(new Date());
   const eventos = Object.entries(STATE.eventos)
-    .filter(([id,ev])=> (!STATE.asignaciones[id] || Object.keys(STATE.asignaciones[id]).length===0) && !ev.excluirSinCubrir && ev.start.slice(0,10) >= hoyIso)
+    .filter(([id,ev])=> !eventoEstaCubierto(id) && !ev.excluirSinCubrir && ev.start.slice(0,10) >= hoyIso)
     .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
 
   if(eventos.length===0){
     cont.innerHTML = `<div class="empty-state"><span class="eyebrow">Todo cubierto</span><p>No hay eventos próximos sin técnico asignado.</p></div>`;
     return;
   }
-  cont.innerHTML = eventos.map(([id, ev])=>`
+  cont.innerHTML = eventos.map(([id, ev])=>{
+    const motivo = motivoSinCubrir(id);
+    return `
     <div class="event-row">
       <div>
         <div class="event-fecha">${fmtFecha(ev.start)}</div>
@@ -3265,10 +3311,12 @@ function renderSinCubrir(){
       <div style="flex:1;">
         <div class="event-titulo">${ev.summary}</div>
         <div class="event-cal">${CALENDARIOS[ev.calendario]?.nombre || ev.calendario}</div>
+        ${motivo ? `<div class="muted" style="color:var(--amber);font-weight:600;margin-top:2px;">${motivo}</div>` : ""}
       </div>
       <button class="btn btn-teal" data-goto-asignar="${id}">Asignar</button>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   cont.querySelectorAll("[data-goto-asignar]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
@@ -3386,6 +3434,7 @@ function renderAsignarDetalle(eventId){
   const evento = STATE.eventos[eventId];
   if(!evento){ cont.innerHTML = ""; return; }
   const asign = STATE.asignaciones[eventId] || {};
+  const requisitosEvento = evento.requisitos || [];
 
   const eventoEsFindeFestivo = esFindeOFestivo(evento.start);
   const fechaEventoIso = (evento.start||"").slice(0,10);
@@ -3395,7 +3444,7 @@ function renderAsignarDetalle(eventId){
     const libranzaPendiente = eventoEsFindeFestivo && !datos.libranzaCompensatoria;
     const notasTecnicoActivas = notasActivasTecnico(tid, fechaEventoIso);
     const notaTxt = notasTecnicoActivas.length ? ` · <strong style="color:#7A4A00;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</strong>` : "";
-    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${datos.horario}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}${libranzaPendiente?` · ⚠️ libranza pendiente`:""}${notaTxt}
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${textoHorario(datos.horario)}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}${libranzaPendiente?` · ⚠️ libranza pendiente`:""}${notaTxt}
       ${isAdmin?`<button data-editar="${tid}" title="Editar">✎</button><button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
@@ -3422,9 +3471,13 @@ function renderAsignarDetalle(eventId){
         <div class="field">
           <label>Horario</label>
           <div style="display:flex;gap:6px;">
-            <input type="text" id="editHorario" placeholder="09:00–18:00" value="${datos.horario||""}">
+            <input type="text" id="editHorario" placeholder="09:00–18:00" value="${datos.horario===HORARIO_POR_CONFIRMAR ? "" : (datos.horario||"")}" ${datos.horario===HORARIO_POR_CONFIRMAR?"disabled":""}>
             <button type="button" class="btn btn-ghost" id="btnHorarioOficinaEdit" title="Usar horario de Oficina Scope de ${nombreEdit}" style="white-space:nowrap;">📋 Oficina</button>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400;">
+            <input type="checkbox" id="editHorarioPorConfirmar" style="width:auto;" ${datos.horario===HORARIO_POR_CONFIRMAR?"checked":""}>
+            ⏱️ Por confirmar horario de citación
+          </label>
         </div>
       </div>
       <div class="row row-compact" style="align-items:flex-end;">
@@ -3512,6 +3565,10 @@ function renderAsignarDetalle(eventId){
             <input type="text" id="nuevoHorario" placeholder="09:00–18:00" value="${horarioDefecto}">
             <button type="button" class="btn btn-ghost" id="btnHorarioOficinaNuevo" title="Usar horario de Oficina Scope" style="white-space:nowrap;">📋 Oficina</button>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400;">
+            <input type="checkbox" id="nuevoHorarioPorConfirmar" style="width:auto;">
+            ⏱️ Por confirmar horario de citación (deja el evento en Sin cubrir hasta que se concrete)
+          </label>
         </div>
       </div>
       <div class="row row-compact" style="align-items:flex-end;">
@@ -3631,6 +3688,29 @@ function renderAsignarDetalle(eventId){
     </div>
     ` : ""}
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+    <div class="field">
+      <label>Técnicos necesarios ${eventoEstaCubierto(eventId) ? '<span style="color:var(--teal);font-weight:700;">· ✓ Completo</span>' : (Object.keys(asign).length ? '<span style="color:var(--danger);font-weight:700;">· Incompleto</span>' : '')}</label>
+      <p class="muted" style="margin-top:0;">Mientras no se cumplan estas cantidades por categoría, el evento se sigue mostrando en Sin cubrir. Si no defines ninguna, basta con tener al menos un técnico asignado.</p>
+      <div id="requisitosList">${(requisitosEvento.length ? requisitosEvento : []).map((r,idx)=>{
+        const asignadosDeEsteTipo = Object.values(asign).filter(d=>d.tipoAsignacion===r.tipo).length;
+        const completo = asignadosDeEsteTipo >= r.cantidad;
+        return `<div class="event-row" style="padding:6px 10px;">
+          <div style="flex:1;">
+            <strong>${r.cantidad} × ${r.tipo}</strong>
+            <span class="muted" style="color:${completo?'var(--teal)':'var(--danger)'};font-weight:600;"> — ${asignadosDeEsteTipo} de ${r.cantidad} asignado${r.cantidad>1?'s':''}</span>
+          </div>
+          ${isAdmin?`<button class="btn btn-ghost" data-quitar-requisito="${idx}">Quitar</button>`:""}
+        </div>`;
+      }).join("") || `<p class="muted">Sin requisitos definidos.</p>`}</div>
+      ${isAdmin ? `
+      <div class="row row-compact" style="margin-top:8px;">
+        <select id="requisitoNuevoTipo">${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}</select>
+        <input type="number" id="requisitoNuevaCantidad" min="1" value="1" style="width:70px;">
+        <button class="btn btn-ghost" id="btnAnadirRequisito">Añadir</button>
+      </div>
+      ` : ""}
+    </div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
     <div>${asignadosHtml}</div>
     ${isAdmin ? `
     <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
@@ -3649,6 +3729,26 @@ function renderAsignarDetalle(eventId){
 
   document.getElementById("btnCerrarDetalle").addEventListener("click", cerrarModalAsignacion);
 
+  const btnAnadirRequisito = document.getElementById("btnAnadirRequisito");
+  if(btnAnadirRequisito){
+    btnAnadirRequisito.addEventListener("click", async ()=>{
+      const tipo = document.getElementById("requisitoNuevoTipo").value;
+      const cantidad = parseInt(document.getElementById("requisitoNuevaCantidad").value,10) || 1;
+      const nuevos = [...requisitosEvento];
+      const existente = nuevos.find(r=>r.tipo===tipo);
+      if(existente) existente.cantidad = cantidad;
+      else nuevos.push({ tipo, cantidad });
+      await update(ref(db, `eventos/${eventId}`), { requisitos: nuevos });
+      renderAsignarDetalle(eventId);
+    });
+  }
+  cont.querySelectorAll("[data-quitar-requisito]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const nuevos = requisitosEvento.filter((r,idx)=> idx !== +btn.dataset.quitarRequisito);
+      await update(ref(db, `eventos/${eventId}`), { requisitos: nuevos });
+      renderAsignarDetalle(eventId);
+    });
+  });
   const btnGuardarDescGoogle = document.getElementById("btnGuardarDescGoogle");
   if(btnGuardarDescGoogle){
     btnGuardarDescGoogle.addEventListener("click", ()=>{
@@ -3715,6 +3815,7 @@ function renderAsignarDetalle(eventId){
     const inputAntes = document.getElementById("editMontajeAntes");
     const inputDespues = document.getElementById("editDesmontajeDespues");
     const inputHorario = document.getElementById("editHorario");
+    const chkHorarioPorConfirmar = document.getElementById("editHorarioPorConfirmar");
     const chkDescanso = document.getElementById("editDescansoActivo");
     const inputMinutos = document.getElementById("editDescansoMinutos");
     const recalcular = ()=>{
@@ -3725,6 +3826,12 @@ function renderAsignarDetalle(eventId){
     if(inputAntes) inputAntes.addEventListener("input", recalcular);
     if(inputDespues) inputDespues.addEventListener("input", recalcular);
     if(chkDescanso) chkDescanso.addEventListener("change", ()=>{ inputMinutos.disabled = !chkDescanso.checked; });
+    if(chkHorarioPorConfirmar){
+      chkHorarioPorConfirmar.addEventListener("change", ()=>{
+        inputHorario.disabled = chkHorarioPorConfirmar.checked;
+        if(chkHorarioPorConfirmar.checked){ chkDescanso.checked = false; inputMinutos.disabled = true; }
+      });
+    }
     const btnHorarioOficinaEdit = document.getElementById("btnHorarioOficinaEdit");
     if(btnHorarioOficinaEdit){
       btnHorarioOficinaEdit.addEventListener("click", ()=>{
@@ -3737,18 +3844,20 @@ function renderAsignarDetalle(eventId){
       btnGuardarEdicion.addEventListener("click", async ()=>{
         const tipoAsignacion = document.getElementById("editTipoAsignacion").value;
         if(!tipoAsignacion) return toast("Elige el tipo de asignación");
-        const horario = inputHorario.value;
+        const horario = chkHorarioPorConfirmar?.checked ? HORARIO_POR_CONFIRMAR : inputHorario.value;
         const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
         const lugar = document.getElementById("editLugar").value;
         const sala = document.getElementById("editSala").value;
         const inputLibranza = document.getElementById("editLibranzaCompensatoria");
         const libranzaCompensatoria = inputLibranza ? (inputLibranza.value || null) : undefined;
 
-        const conflictos = obtenerConflictosHorario(editandoTecnicoId, eventId, evento.start.slice(0,10), horario);
-        if(conflictos.length){
-          const nombreTecnico = STATE.tecnicos[editandoTecnicoId]?.nombre || editandoTecnicoId;
-          if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
-          await resolverConflictosYAvisar(editandoTecnicoId, conflictos, eventId);
+        if(!chkHorarioPorConfirmar?.checked){
+          const conflictos = obtenerConflictosHorario(editandoTecnicoId, eventId, evento.start.slice(0,10), horario);
+          if(conflictos.length){
+            const nombreTecnico = STATE.tecnicos[editandoTecnicoId]?.nombre || editandoTecnicoId;
+            if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
+            await resolverConflictosYAvisar(editandoTecnicoId, conflictos, eventId);
+          }
         }
 
         // Si había una libranza compensatoria puesta antes y ahora se borra o se cambia de fecha,
@@ -3772,9 +3881,19 @@ function renderAsignarDetalle(eventId){
   const inputAntes = document.getElementById("nuevoMontajeAntes");
   const inputDespues = document.getElementById("nuevoDesmontajeDespues");
   const inputHorario = document.getElementById("nuevoHorario");
+  const chkHorarioPorConfirmar = document.getElementById("nuevoHorarioPorConfirmar");
   const chkDescanso = document.getElementById("nuevoDescansoActivo");
   const inputMinutos = document.getElementById("nuevoDescansoMinutos");
   const hintDescanso = document.getElementById("descansoAutoHint");
+  if(chkHorarioPorConfirmar){
+    chkHorarioPorConfirmar.addEventListener("change", ()=>{
+      inputHorario.disabled = chkHorarioPorConfirmar.checked;
+      if(chkHorarioPorConfirmar.checked){
+        chkDescanso.checked = false; inputMinutos.disabled = true;
+        hintDescanso.textContent = "";
+      }
+    });
+  }
 
   const evaluarDescansoAuto = ()=>{
     const horas = parseDuracionHoras(inputHorario.value);
@@ -3871,14 +3990,16 @@ function renderAsignarDetalle(eventId){
         if(!tipoAsignacion) return toast("Elige el tipo de asignación para cada técnico marcado");
         asignacionesLista.push({ tid: chk.dataset.tid, tipoAsignacion });
       }
-      const horario = inputHorario.value;
+      const horario = chkHorarioPorConfirmar?.checked ? HORARIO_POR_CONFIRMAR : inputHorario.value;
       const fechaIso = evento.start.slice(0,10);
-      for(const {tid} of asignacionesLista){
-        const conflictos = obtenerConflictosHorario(tid, eventId, fechaIso, horario);
-        if(conflictos.length){
-          const nombreTecnico = STATE.tecnicos[tid]?.nombre || tid;
-          if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
-          await resolverConflictosYAvisar(tid, conflictos, eventId);
+      if(!chkHorarioPorConfirmar?.checked){
+        for(const {tid} of asignacionesLista){
+          const conflictos = obtenerConflictosHorario(tid, eventId, fechaIso, horario);
+          if(conflictos.length){
+            const nombreTecnico = STATE.tecnicos[tid]?.nombre || tid;
+            if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
+            await resolverConflictosYAvisar(tid, conflictos, eventId);
+          }
         }
       }
       const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
@@ -4232,7 +4353,9 @@ function segmentosATarjetasHTML(segmentos){
         <div class="turno-cliente">${icono}${seg.label}</div>
       </div>`;
     }
-    const horaTxt = `${minutosAHora(seg.inicio%1440)} → ${minutosAHora(seg.fin%1440)}`;
+    const horaTxt = seg.datos?.horario===HORARIO_POR_CONFIRMAR
+      ? "⏱️ Por confirmar horario de citación"
+      : `${minutosAHora(seg.inicio%1440)} → ${minutosAHora(seg.fin%1440)}`;
     return `<div class="turno-block ${claseClicable}" style="border-left-color:${seg.color};" ${verEvento}>
       <div class="turno-horario">${horaTxt}</div>
       ${timelineHTML({ inicio:seg.inicio, fin:seg.fin })}
