@@ -1172,7 +1172,7 @@
           <div class="row row-compact">
             <div class="field">
               <label>Categoría</label>
-              <select id="reglaRequisitoTipo">${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}</select>
+              <select id="reglaRequisitoTipo"></select>
             </div>
             <div class="field" style="max-width:90px;">
               <label>Cantidad</label>
@@ -1187,6 +1187,8 @@
           <hr style="border:none;border-top:1px solid var(--line);margin:14px 0;">
           <p class="muted" style="margin-top:0;">Elige arriba el calendario "Fundación Juan March" y pulsa este botón para cargar de golpe las 13 reglas de sus ciclos (solo hace falta una vez).</p>
           <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnCargarReglasFJM">Cargar reglas de ciclos de Fundación Juan March</button>
+          <p class="muted" style="margin-top:10px;">Las reglas solo se aplican solas a eventos que se sincronizan por primera vez. Si acabas de crear o cambiar una regla y quieres que se aplique también a eventos que ya estaban sincronizados de antes (y que todavía no tengan técnicos necesarios puestos a mano), usa este botón.</p>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnAplicarReglasRetroactivo">Aplicar reglas a eventos futuros ya sincronizados</button>
           <hr style="border:none;border-top:1px solid var(--line);margin:14px 0;">
           <div id="listaReglasRequisitos"></div>
         </div>
@@ -1678,6 +1680,11 @@ function renderReglasRequisitos(){
   selectCal.innerHTML = Object.entries(CALENDARIOS).map(([clave,c])=>`<option value="${clave}">${c.nombre}</option>`).join("");
   if(calSeleccionado && CALENDARIOS[calSeleccionado]) selectCal.value = calSeleccionado;
 
+  const selectTipo = document.getElementById("reglaRequisitoTipo");
+  if(selectTipo && selectTipo.options.length===0){
+    selectTipo.innerHTML = TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("");
+  }
+
   const enCursoDiv = document.getElementById("reglaRequisitosEnCurso");
   enCursoDiv.innerHTML = reglaRequisitosEnCurso.length
     ? reglaRequisitosEnCurso.map((r,idx)=>`<span class="chip">${r.cantidad} × ${r.tipo} <button data-quitar-requisito-regla="${idx}" title="Quitar">✕</button></span>`).join(" ")
@@ -1755,6 +1762,22 @@ document.getElementById("btnCargarReglasFJM").addEventListener("click", async ()
   });
   await update(ref(db), updates);
   toast(`${reglas.length} reglas cargadas`);
+});
+document.getElementById("btnAplicarReglasRetroactivo").addEventListener("click", async ()=>{
+  const hoyIso = isoDate(new Date());
+  const updates = {};
+  let aplicadas = 0;
+  Object.entries(STATE.eventos).forEach(([id, ev])=>{
+    if((ev.requisitos && ev.requisitos.length) || (ev.start||"").slice(0,10) < hoyIso) return;
+    const requisitos = reglaRequisitosParaEvento(ev.calendario, ev.summary, (ev.start||"").slice(0,10));
+    if(requisitos && requisitos.length){
+      updates[`eventos/${id}/requisitos`] = requisitos;
+      aplicadas++;
+    }
+  });
+  if(aplicadas===0) return toast("Ningún evento futuro sin requisitos coincidía con alguna regla");
+  await update(ref(db), updates);
+  toast(`${aplicadas} evento${aplicadas>1?"s":""} actualizado${aplicadas>1?"s":""} con sus técnicos necesarios`);
 });
 function renderNotasTecnico(){
   const select = document.getElementById("notaTecnicoSelect");
