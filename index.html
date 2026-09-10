@@ -1144,6 +1144,53 @@
           <div id="listaNotasTecnico"></div>
         </div>
         <div class="card">
+          <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Reglas automáticas de técnicos necesarios</h3>
+          <p class="muted" style="margin-top:0;">Cuando un evento nuevo se sincroniza por primera vez, si coincide con alguna regla de aquí, se le rellenan solos sus "técnicos necesarios" (los mismos que puedes editar a mano en cada evento). Deja la palabra del título vacía para que la regla se aplique a todos los eventos de ese calendario; si pones una palabra, solo se aplica a los eventos cuyo título la contenga (por ejemplo, para distinguir ciclos de Fundación Juan March). Una vez aplicada, es solo el punto de partida — puedes añadir o quitar técnicos a mano en cualquier evento concreto sin que la regla se lo vuelva a pisar.</p>
+          <div class="row row-compact">
+            <div class="field">
+              <label>Calendario</label>
+              <select id="reglaCalendario"></select>
+            </div>
+            <div class="field">
+              <label>Palabra del título (opcional)</label>
+              <input type="text" id="reglaPrefijo" placeholder="Ej: COTEC">
+            </div>
+            <div class="field">
+              <label>Día de la semana (opcional)</label>
+              <select id="reglaDiaSemana">
+                <option value="">Cualquier día</option>
+                <option value="1">Lunes</option>
+                <option value="2">Martes</option>
+                <option value="3">Miércoles</option>
+                <option value="4">Jueves</option>
+                <option value="5">Viernes</option>
+                <option value="6">Sábado</option>
+                <option value="0">Domingo</option>
+              </select>
+            </div>
+          </div>
+          <div class="row row-compact">
+            <div class="field">
+              <label>Categoría</label>
+              <select id="reglaRequisitoTipo">${TIPOS_ASIGNACION.map(t=>`<option value="${t}">${t}</option>`).join("")}</select>
+            </div>
+            <div class="field" style="max-width:90px;">
+              <label>Cantidad</label>
+              <input type="number" id="reglaRequisitoCantidad" min="1" value="1">
+            </div>
+            <div class="field" style="flex:0;align-self:flex-end;">
+              <button class="btn btn-ghost" id="btnAnadirRequisitoRegla" style="white-space:nowrap;">Añadir a la regla</button>
+            </div>
+          </div>
+          <div id="reglaRequisitosEnCurso" style="margin:6px 0;"></div>
+          <button class="btn btn-amber" id="btnGuardarRegla">Guardar regla</button>
+          <hr style="border:none;border-top:1px solid var(--line);margin:14px 0;">
+          <p class="muted" style="margin-top:0;">Elige arriba el calendario "Fundación Juan March" y pulsa este botón para cargar de golpe las 13 reglas de sus ciclos (solo hace falta una vez).</p>
+          <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnCargarReglasFJM">Cargar reglas de ciclos de Fundación Juan March</button>
+          <hr style="border:none;border-top:1px solid var(--line);margin:14px 0;">
+          <div id="listaReglasRequisitos"></div>
+        </div>
+        <div class="card">
           <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Calendarios</h3>
           <p class="muted" style="margin-top:0;">Añade aquí un nuevo calendario de Google (el ID lo encuentras en Google Calendar → los tres puntos junto al calendario → Configuración y uso compartido → Integrar calendario).</p>
           <div class="row row-compact">
@@ -1416,6 +1463,27 @@ function textoHorario(horario){
    tiene el horario pendiente de confirmar, y (si el evento define técnicos necesarios por
    categoría) se cumple la cantidad pedida de cada categoría. Mientras no se cumpla todo esto, el
    evento se sigue mostrando en "Sin cubrir" para no olvidarse de completarlo. */
+/* Busca entre las reglas configuradas en Admin cuál aplica a un evento recién creado, para
+   rellenarle automáticamente sus "técnicos necesarios" por defecto. Solo se usa al crear el
+   evento por primera vez (nunca sobrescribe requisitos ya existentes, sean automáticos o puestos
+   a mano) — así cualquier ajuste manual posterior (una excepción con un técnico de más, etc.) se
+   queda tal cual para siempre. Si varias reglas coinciden, gana la que además pide una palabra
+   concreta del título (más específica) frente a la que aplica a todo el calendario en general. */
+function reglaRequisitosParaEvento(calendario, summary, fechaIso){
+  const normalizar = (s)=> (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const reglas = Object.values(STATE.reglasRequisitos || {});
+  const tituloNorm = normalizar(summary);
+  const diaSemana = fechaIso ? new Date(fechaIso+"T00:00:00").getDay() : null; // 0=domingo … 6=sábado
+  const coincidentes = reglas.filter(r=>
+    r.calendario === calendario &&
+    (!r.prefijo || tituloNorm.includes(normalizar(r.prefijo))) &&
+    (r.diaSemana==null || r.diaSemana==="" || diaSemana===null || +r.diaSemana===diaSemana)
+  );
+  if(coincidentes.length===0) return null;
+  // Gana la más concreta: primero por tener palabra del título, y entre esas, por fijar además un día de la semana.
+  coincidentes.sort((a,b)=> (b.prefijo?1:0)-(a.prefijo?1:0) || ((b.diaSemana!=null&&b.diaSemana!=="")?1:0)-((a.diaSemana!=null&&a.diaSemana!=="")?1:0));
+  return coincidentes[0].requisitos || [];
+}
 function eventoEstaCubierto(eventId){
   const asign = STATE.asignaciones[eventId] || {};
   const datosAsignados = Object.values(asign);
@@ -1443,7 +1511,7 @@ let currentUser = null;
 let accessToken = null;
 let isAdmin = false;
 
-let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{} };
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{}, reglasRequisitos:{} };
 
 /* ---------- HELPERS ---------- */
 function slugify(str){
@@ -1602,6 +1670,92 @@ async function despublicarSemana(lunesIso){
   }
   toast("Semana despublicada");
 }
+let reglaRequisitosEnCurso = [];
+function renderReglasRequisitos(){
+  const selectCal = document.getElementById("reglaCalendario");
+  if(!selectCal) return;
+  const calSeleccionado = selectCal.value;
+  selectCal.innerHTML = Object.entries(CALENDARIOS).map(([clave,c])=>`<option value="${clave}">${c.nombre}</option>`).join("");
+  if(calSeleccionado && CALENDARIOS[calSeleccionado]) selectCal.value = calSeleccionado;
+
+  const enCursoDiv = document.getElementById("reglaRequisitosEnCurso");
+  enCursoDiv.innerHTML = reglaRequisitosEnCurso.length
+    ? reglaRequisitosEnCurso.map((r,idx)=>`<span class="chip">${r.cantidad} × ${r.tipo} <button data-quitar-requisito-regla="${idx}" title="Quitar">✕</button></span>`).join(" ")
+    : `<p class="muted" style="margin:0;">Todavía no has añadido ninguna categoría a esta regla.</p>`;
+  enCursoDiv.querySelectorAll("[data-quitar-requisito-regla]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      reglaRequisitosEnCurso.splice(+btn.dataset.quitarRequisitoRegla, 1);
+      renderReglasRequisitos();
+    });
+  });
+
+  const lista = document.getElementById("listaReglasRequisitos");
+  const reglas = Object.entries(STATE.reglasRequisitos || {});
+  const NOMBRES_DIA = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+  lista.innerHTML = reglas.length ? reglas.map(([key,r])=>`
+    <div class="event-row">
+      <div style="flex:1;">
+        <strong>${CALENDARIOS[r.calendario]?.nombre || r.calendario}</strong>${r.prefijo?` · título contiene "${r.prefijo}"`:` · todos los eventos de este calendario`}${(r.diaSemana!=null && r.diaSemana!=="")?` · ${NOMBRES_DIA[+r.diaSemana]}`:""}<br>
+        <span class="muted">${(r.requisitos||[]).map(x=>`${x.cantidad} × ${x.tipo}`).join(", ") || "(sin categorías)"}</span>
+      </div>
+      <button class="btn btn-ghost" data-quitar-regla="${key}">Quitar</button>
+    </div>
+  `).join("") : `<p class="muted">No hay ninguna regla configurada todavía.</p>`;
+  lista.querySelectorAll("[data-quitar-regla]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      await remove(ref(db, `reglasRequisitos/${btn.dataset.quitarRegla}`));
+    });
+  });
+}
+document.getElementById("btnAnadirRequisitoRegla").addEventListener("click", ()=>{
+  const tipo = document.getElementById("reglaRequisitoTipo").value;
+  const cantidad = parseInt(document.getElementById("reglaRequisitoCantidad").value,10) || 1;
+  const existente = reglaRequisitosEnCurso.find(r=>r.tipo===tipo);
+  if(existente) existente.cantidad = cantidad;
+  else reglaRequisitosEnCurso.push({ tipo, cantidad });
+  renderReglasRequisitos();
+});
+document.getElementById("btnGuardarRegla").addEventListener("click", async ()=>{
+  const calendario = document.getElementById("reglaCalendario").value;
+  const prefijo = document.getElementById("reglaPrefijo").value.trim();
+  const diaSemana = document.getElementById("reglaDiaSemana").value;
+  if(reglaRequisitosEnCurso.length===0) return toast("Añade al menos una categoría a la regla");
+  const key = push(ref(db,"reglasRequisitos")).key;
+  await update(ref(db), { [`reglasRequisitos/${key}`]: { calendario, prefijo, diaSemana: diaSemana||null, requisitos: [...reglaRequisitosEnCurso], creado: Date.now() } });
+  reglaRequisitosEnCurso = [];
+  document.getElementById("reglaPrefijo").value = "";
+  document.getElementById("reglaDiaSemana").value = "";
+  toast("Regla guardada");
+});
+document.getElementById("btnCargarReglasFJM").addEventListener("click", async ()=>{
+  const calendario = document.getElementById("reglaCalendario").value;
+  if(!calendario) return toast("Elige primero el calendario de Fundación Juan March en el desplegable de arriba");
+  const grupoCompleto = [{tipo:"REALIZACIÓN",cantidad:1},{tipo:"SONIDO",cantidad:2},{tipo:"LUCES",cantidad:1}];
+  const grupoEstandar = [{tipo:"REALIZACIÓN",cantidad:1},{tipo:"SONIDO",cantidad:1},{tipo:"LUCES",cantidad:1}];
+  const grupoSinLuces = [{tipo:"REALIZACIÓN",cantidad:1},{tipo:"SONIDO",cantidad:1}];
+  const reglas = [
+    { prefijo:"VIERNES TEMÁTICOS", diaSemana:null, requisitos: grupoCompleto },
+    { prefijo:"LA CUESTIÓN PALPITANTE", diaSemana:null, requisitos: grupoCompleto },
+    { prefijo:"LA EXPOSICIÓN EXPLICADA", diaSemana:null, requisitos: grupoCompleto },
+    { prefijo:"CICLOS DE CONFERENCIAS", diaSemana:null, requisitos: grupoEstandar },
+    { prefijo:"CICLOS DE MIÉRCOLES", diaSemana:null, requisitos: grupoEstandar },
+    { prefijo:"CONCIERTOS DEL SÁBADO", diaSemana:null, requisitos: grupoEstandar },
+    { prefijo:"AULA DE (RE)ESTRENOS", diaSemana:null, requisitos: grupoEstandar },
+    { prefijo:"JÓVENES INTÉRPRETES", diaSemana:0, requisitos: grupoEstandar }, // domingo
+    { prefijo:"CINE EN LA MARCH", diaSemana:5, requisitos: grupoEstandar }, // viernes
+    { prefijo:"MEMORIAS DE LA FUNDACIÓN", diaSemana:null, requisitos: grupoSinLuces },
+    { prefijo:"CINE EN LA MARCH", diaSemana:6, requisitos: grupoSinLuces }, // sábado
+    { prefijo:"JÓVENES INTÉRPRETES", diaSemana:1, requisitos: [{tipo:"LUCES",cantidad:1}] }, // lunes
+    { prefijo:"PALMA", diaSemana:null, requisitos: [{tipo:"REALIZACIÓN",cantidad:1}] }
+  ];
+  const updates = {};
+  reglas.forEach(r=>{
+    const key = push(ref(db,"reglasRequisitos")).key;
+    updates[`reglasRequisitos/${key}`] = { calendario, prefijo:r.prefijo, diaSemana:r.diaSemana, requisitos:r.requisitos, creado: Date.now() };
+  });
+  await update(ref(db), updates);
+  toast(`${reglas.length} reglas cargadas`);
+});
 function renderNotasTecnico(){
   const select = document.getElementById("notaTecnicoSelect");
   if(!select) return;
@@ -2049,6 +2203,7 @@ onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; rende
 onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
 onValue(ref(db,"avisosCambios"), (snap)=>{ STATE.avisosCambios = snap.val() || {}; render(); });
 onValue(ref(db,"notasTecnico"), (snap)=>{ STATE.notasTecnico = snap.val() || {}; render(); });
+onValue(ref(db,"reglasRequisitos"), (snap)=>{ STATE.reglasRequisitos = snap.val() || {}; render(); });
 onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; renderSubmenuCalendarios(); render(); });
 
 /* ---------- TABS ---------- */
@@ -2272,6 +2427,7 @@ async function syncCalendarioIcs(claveCal, calInfo){
     const idSeguro = `ics_${sanitizeFirebaseKey(ev.uid)}`;
     fetchedIds.add(idSeguro);
     const anterior = STATE.eventos[idSeguro] || {};
+    const esEventoNuevo = !STATE.eventos[idSeguro];
     const eventoNuevo = {
       calendario: claveCal,
       calendarId: null, // de solo lectura: no hay escritura posible en Calendar
@@ -2283,7 +2439,7 @@ async function syncCalendarioIcs(claveCal, calInfo){
       excluirInforme: !!anterior.excluirInforme,
       excluirSinCubrir: !!anterior.excluirSinCubrir,
       notaInterna: anterior.notaInterna || "",
-      requisitos: anterior.requisitos || []
+      requisitos: esEventoNuevo ? (reglaRequisitosParaEvento(claveCal, ev.summary, (ev.start||"").slice(0,10)) || []) : (anterior.requisitos || [])
     };
     const aviso = detectarCambioHorarioEvento(idSeguro, STATE.eventos[idSeguro], eventoNuevo);
     if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
@@ -2323,6 +2479,7 @@ async function syncCalendario(claveCal, calInfo){
     const adjuntos = (ev.attachments||[]).map(a=>({ titulo: a.title||"Documento", url: a.fileUrl||"" })).filter(a=>a.url);
     if(adjuntos.length) conAdjuntosValidos++;
     const anterior = STATE.eventos[ev.id] || {};
+    const esEventoNuevo = !STATE.eventos[ev.id];
     const eventoNuevo = {
       calendario: claveCal,
       calendarId: calInfo.calendarId,
@@ -2336,7 +2493,7 @@ async function syncCalendario(claveCal, calInfo){
       excluirInforme: !!anterior.excluirInforme,
       excluirSinCubrir: !!anterior.excluirSinCubrir,
       notaInterna: anterior.notaInterna || "",
-      requisitos: anterior.requisitos || []
+      requisitos: esEventoNuevo ? (reglaRequisitosParaEvento(claveCal, ev.summary, (ev.start?.dateTime || ev.start?.date || "").slice(0,10)) || []) : (anterior.requisitos || [])
     };
     const aviso = detectarCambioHorarioEvento(ev.id, STATE.eventos[ev.id], eventoNuevo);
     if(aviso) updates[`avisosCambios/${push(ref(db,"avisosCambios")).key}`] = aviso;
@@ -3257,7 +3414,7 @@ function render(){
   if(activeTab==="tecnico") renderVistaTecnico();
   if(activeTab==="general") renderVistaGeneral();
   if(activeTab==="ausencias") renderAusencias();
-  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); poblarSelectorInforme(); renderNotasTecnico(); }
+  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); poblarSelectorInforme(); renderNotasTecnico(); renderReglasRequisitos(); }
 }
 
 let resizeCuadranteTimeout = null;
