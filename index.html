@@ -2943,13 +2943,14 @@ async function guardarModalidadEvento(eventId, modalidad, excluirInforme, exclui
 }
 async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descansoMinutos, lugar, sala, libranzaCompensatoria){
   const updates = {};
-  asignacionesLista.forEach(({tid, tipoAsignacion})=>{
+  asignacionesLista.forEach(({tid, tipoAsignacion, modalidadIndividual})=>{
     updates[`asignaciones/${eventId}/${tid}`] = {
       horario: horario||"",
       descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
       tipoAsignacion: tipoAsignacion||"",
       lugar: lugar||"",
       sala: sala||"",
+      modalidadIndividual: modalidadIndividual || null,
       libranzaCompensatoria: libranzaCompensatoria || null
     };
     if(libranzaCompensatoria){
@@ -2958,8 +2959,8 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
   });
   await update(ref(db), updates);
   const asignacionesActualizadas = { ...(STATE.asignaciones[eventId]||{}) };
-  asignacionesLista.forEach(({tid, tipoAsignacion})=>{
-    asignacionesActualizadas[tid] = { horario: horario||"", descansoMinutos, tipoAsignacion: tipoAsignacion||"", lugar: lugar||"", sala: sala||"" };
+  asignacionesLista.forEach(({tid, tipoAsignacion, modalidadIndividual})=>{
+    asignacionesActualizadas[tid] = { horario: horario||"", descansoMinutos, tipoAsignacion: tipoAsignacion||"", lugar: lugar||"", sala: sala||"", modalidadIndividual: modalidadIndividual||null };
   });
   let resultadoDesc;
   try{ resultadoDesc = await actualizarDescripcionEvento(eventId, asignacionesActualizadas); }
@@ -2969,13 +2970,14 @@ async function asignarVariosTecnicos(eventId, asignacionesLista, horario, descan
     ? `${n} técnico${n>1?"s":""} asignado${n>1?"s":""} en la app, pero no en Calendar: ${resultadoDesc.motivo}`
     : `${n} técnico${n>1?"s":""} asignado${n>1?"s":""}`);
 }
-async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala, libranzaCompensatoria){
+async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala, libranzaCompensatoria, modalidadIndividual){
   const updates = {
     horario: horario||"",
     descansoMinutos: (descansoMinutos===null||descansoMinutos===undefined) ? null : descansoMinutos,
     tipoAsignacion: tipoAsignacion||"",
     lugar: lugar||"",
-    sala: sala||""
+    sala: sala||"",
+    modalidadIndividual: modalidadIndividual || null
   };
   if(libranzaCompensatoria!==undefined) updates.libranzaCompensatoria = libranzaCompensatoria || null;
   const dbUpdates = { [`asignaciones/${eventId}/${tecnicoId}`]: updates };
@@ -3131,9 +3133,18 @@ function modalidadCompatible(modalidad){
    la base, como una online) porque suele ser una gestión puntual y corta — pero si para ese
    técnico dura más de 4 horas, en la práctica ocupa la mayor parte de la jornada, así que a
    partir de ahí se comporta igual que un presencial: sustituye a la base por completo. */
+/* Cuando la modalidad del evento es "mixta" (presencial/online, cada técnico la suya), la
+   modalidad que de verdad aplica a un técnico concreto es la que se le haya asignado a él
+   individualmente, no la del evento en general. Para cualquier otra modalidad, es la del evento
+   tal cual, igual que siempre. */
+function modalidadEfectiva(ev, datos){
+  if(ev.modalidad==="mixta") return datos?.modalidadIndividual || "presencial";
+  return ev.modalidad;
+}
 function eventoReemplazaBase(ev, datos){
-  if(!modalidadCompatible(ev.modalidad)) return true;
-  if(ev.modalidad==="visita"){
+  const modalidad = modalidadEfectiva(ev, datos);
+  if(!modalidadCompatible(modalidad)) return true;
+  if(modalidad==="visita"){
     const rango = rangoEventoConFallback(datos, ev);
     if(rango && (rango.fin-rango.inicio) > 4*60) return true;
   }
@@ -3151,6 +3162,7 @@ function textoModalidad(modalidad){
   if(modalidad==="oficina") return "🏠 En oficina (Scope)";
   if(modalidad==="visita") return "📋 Visita técnica";
   if(modalidad==="presencial") return "🏢 Presencial";
+  if(modalidad==="mixta") return "🏢💻 Presencial/Online (cada técnico la suya)";
   return "";
 }
 function esFindeOFestivo(fechaIso){
@@ -3673,7 +3685,7 @@ function renderAsignarDetalle(eventId){
     const libranzaPendiente = eventoEsFindeFestivo && !datos.libranzaCompensatoria;
     const notasTecnicoActivas = notasActivasTecnico(tid, fechaEventoIso);
     const notaTxt = notasTecnicoActivas.length ? ` · <strong style="color:#7A4A00;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</strong>` : "";
-    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${datos.horario?` · ${textoHorario(datos.horario)}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}${libranzaPendiente?` · ⚠️ libranza pendiente`:""}${notaTxt}
+    return `<span class="chip"><span class="avatar">${initials(nombre)}</span>${nombre}${datos.tipoAsignacion?` · ${datos.tipoAsignacion}`:""}${evento.modalidad==="mixta"?` · ${datos.modalidadIndividual==="online"?"💻 Online":"🏢 Presencial"}`:""}${datos.horario?` · ${textoHorario(datos.horario)}`:""}${lugarTxt?` · 📍 ${lugarTxt}`:""}${datos.descansoMinutos?` · desc. ${datos.descansoMinutos} min`:""}${libranzaPendiente?` · ⚠️ libranza pendiente`:""}${notaTxt}
       ${isAdmin?`<button data-editar="${tid}" title="Editar">✎</button><button data-quitar="${tid}" title="Quitar">✕</button>`:""}</span>`;
   }).join("") || `<p class="muted">Ningún técnico asignado todavía.</p>`;
 
@@ -3696,6 +3708,13 @@ function renderAsignarDetalle(eventId){
             <option value="">Selecciona tipo…</option>
             ${TIPOS_ASIGNACION.map(t=>`<option value="${t}" ${t===datos.tipoAsignacion?"selected":""}>${t}</option>`).join("")}
           </select>
+          ${evento.modalidad==="mixta" ? `
+          <label style="margin-top:6px;">Modalidad de ${nombreEdit}</label>
+          <select id="editModalidadIndividual">
+            <option value="presencial" ${datos.modalidadIndividual!=="online"?"selected":""}>🏢 Presencial</option>
+            <option value="online" ${datos.modalidadIndividual==="online"?"selected":""}>💻 Online</option>
+          </select>
+          ` : ""}
         </div>
         <div class="field">
           <label>Horario</label>
@@ -3776,6 +3795,7 @@ function renderAsignarDetalle(eventId){
           return `<div class="check-item-row" data-nombre="${normalizar(t.nombre)}">
             <label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}" data-tid="${tid}"> ${t.nombre}</label>
             <select class="sel-tipo-nuevo" data-tid="${tid}" disabled>${opcionesTipo}</select>
+            ${evento.modalidad==="mixta" ? `<select class="sel-modalidad-individual-nuevo" data-tid="${tid}" disabled><option value="presencial">🏢 Presencial</option><option value="online">💻 Online</option></select>` : ""}
           </div>${notaHtml}${conflictoHtml}${otrasHtml}`;
         }).join("")}</div>
         <p class="muted" id="checklistVacio" style="display:none;margin:6px 0 0;">Ningún técnico coincide con la búsqueda.</p>`
@@ -3871,6 +3891,7 @@ function renderAsignarDetalle(eventId){
           <option value="online" ${evento.modalidad==="online"?"selected":""}>Online</option>
           <option value="oficina" ${evento.modalidad==="oficina"?"selected":""}>En oficina (Scope)</option>
           <option value="visita" ${evento.modalidad==="visita"?"selected":""}>Visita técnica</option>
+          <option value="mixta" ${evento.modalidad==="mixta"?"selected":""}>Presencial/Online (cada técnico la suya)</option>
         </select>
       </div>
     </div>
@@ -4077,6 +4098,8 @@ function renderAsignarDetalle(eventId){
         const descansoMinutos = chkDescanso.checked ? (parseInt(inputMinutos.value,10) || 0) : null;
         const lugar = document.getElementById("editLugar").value;
         const sala = document.getElementById("editSala").value;
+        const selModalidadEdit = document.getElementById("editModalidadIndividual");
+        const modalidadIndividual = selModalidadEdit ? selModalidadEdit.value : undefined;
         const inputLibranza = document.getElementById("editLibranzaCompensatoria");
         const libranzaCompensatoria = inputLibranza ? (inputLibranza.value || null) : undefined;
 
@@ -4100,7 +4123,7 @@ function renderAsignarDetalle(eventId){
           }
         }
 
-        asignarTecnico(eventId, editandoTecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala, libranzaCompensatoria);
+        asignarTecnico(eventId, editandoTecnicoId, horario, descansoMinutos, tipoAsignacion, lugar, sala, libranzaCompensatoria, modalidadIndividual);
         editandoTecnicoId = null;
       });
     }
@@ -4172,6 +4195,8 @@ function renderAsignarDetalle(eventId){
     chk.addEventListener("change", ()=>{
       const sel = cont.querySelector(`.sel-tipo-nuevo[data-tid="${chk.dataset.tid}"]`);
       if(sel){ sel.disabled = !chk.checked; if(!chk.checked) sel.value = ""; }
+      const selModalidad = cont.querySelector(`.sel-modalidad-individual-nuevo[data-tid="${chk.dataset.tid}"]`);
+      if(selModalidad) selModalidad.disabled = !chk.checked;
     });
   });
 
@@ -4217,7 +4242,9 @@ function renderAsignarDetalle(eventId){
         const sel = cont.querySelector(`.sel-tipo-nuevo[data-tid="${chk.dataset.tid}"]`);
         const tipoAsignacion = sel ? sel.value : "";
         if(!tipoAsignacion) return toast("Elige el tipo de asignación para cada técnico marcado");
-        asignacionesLista.push({ tid: chk.dataset.tid, tipoAsignacion });
+        const selModalidad = cont.querySelector(`.sel-modalidad-individual-nuevo[data-tid="${chk.dataset.tid}"]`);
+        const modalidadIndividual = selModalidad ? selModalidad.value : undefined;
+        asignacionesLista.push({ tid: chk.dataset.tid, tipoAsignacion, modalidadIndividual });
       }
       const horario = chkHorarioPorConfirmar?.checked ? HORARIO_POR_CONFIRMAR : inputHorario.value;
       const fechaIso = evento.start.slice(0,10);
@@ -4513,7 +4540,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
     eventosDia.forEach(([id,ev])=>{
       const datos = STATE.asignaciones[id][tecnicoId];
       const rango = rangoEventoConFallback(datos, ev);
-      segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
+      segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:modalidadEfectiva(ev,datos), lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
     });
     // El horario realmente asignado (con montaje/desmontaje) puede no coincidir con el orden bruto
     // del evento en Calendar, así que se reordenan aquí por el horario final antes de mostrarlos.
@@ -4557,7 +4584,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
     segmentos.push({ inicio:baseRango.inicio, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso, lugar:baseLugar, sala:baseSala, tipoAsignacion:baseTipoAsignacion });
   });
   eventosOnline.forEach(({id,ev,rango,datos})=>{
-    segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:ev.modalidad, lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
+    segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:modalidadEfectiva(ev,datos), lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
   });
   segmentos.sort((a,b)=> a.inicio-b.inicio);
 
