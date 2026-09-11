@@ -2223,14 +2223,15 @@ function renderAuthBox(){
 }
 
 /* ---------- DATA SUBSCRIPTIONS (lectura pública, siempre activa) ---------- */
+let primerSnapshotEventos = false, primerSnapshotReglas = false;
 onValue(ref(db,"tecnicos"), (snap)=>{ STATE.tecnicos = snap.val() || {}; render(); });
-onValue(ref(db,"eventos"), (snap)=>{ STATE.eventos = snap.val() || {}; render(); });
+onValue(ref(db,"eventos"), (snap)=>{ STATE.eventos = snap.val() || {}; primerSnapshotEventos = true; render(); });
 onValue(ref(db,"asignaciones"), (snap)=>{ STATE.asignaciones = snap.val() || {}; render(); });
 onValue(ref(db,"ausencias"), (snap)=>{ STATE.ausencias = snap.val() || {}; render(); });
 onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {}; render(); });
 onValue(ref(db,"avisosCambios"), (snap)=>{ STATE.avisosCambios = snap.val() || {}; render(); });
 onValue(ref(db,"notasTecnico"), (snap)=>{ STATE.notasTecnico = snap.val() || {}; render(); });
-onValue(ref(db,"reglasRequisitos"), (snap)=>{ STATE.reglasRequisitos = snap.val() || {}; render(); });
+onValue(ref(db,"reglasRequisitos"), (snap)=>{ STATE.reglasRequisitos = snap.val() || {}; primerSnapshotReglas = true; render(); });
 onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; renderSubmenuCalendarios(); render(); });
 
 /* ---------- TABS ---------- */
@@ -2554,6 +2555,17 @@ async function sincronizarTodosLosCalendarios(origen="manual", fechaDesde){
   sincronizando = true;
   const statusEl = document.getElementById("syncStatus");
   if(statusEl) statusEl.textContent = "Sincronizando…";
+  // Justo tras conectar (login/reconectar), Firebase todavía puede no haber entregado el primer
+  // snapshot de "eventos" o "reglasRequisitos" — si sincronizáramos ya, la app no sabría
+  // distinguir eventos nuevos de los que ya existían (se tratarían todos como nuevos), perdiendo
+  // cualquier "técnico necesario" puesto a mano y sin poder aplicar bien las reglas automáticas
+  // (al no tenerlas cargadas todavía). Se espera un poco a que lleguen, con un límite de 8
+  // segundos para no bloquear la sincronización indefinidamente si algo fallara.
+  let esperas = 0;
+  while((!primerSnapshotEventos || !primerSnapshotReglas) && esperas < 80){
+    await new Promise(r=>setTimeout(r, 100));
+    esperas++;
+  }
   let total = 0, borrados = 0;
   const errores = [];
   const avisos = [];
