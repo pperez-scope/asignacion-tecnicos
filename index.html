@@ -842,7 +842,8 @@
   table.general-table tr:hover td.tecnico-name{background:var(--amber);color:#fff;}
   table.general-table td.col-finde{background:#E2E2E2;}
   table.general-table tr.fila-par td.col-finde{background:#D6D6D6;}
-  .celda-color{width:100%;height:20px;border-radius:4px;display:block;}
+  .celda-color{width:100%;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;}
+  .celda-texto-horas{font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);line-height:1;white-space:nowrap;}
   @media (max-width:700px){
     table.general-table{table-layout:auto;min-width:900px;}
     .col-tecnico{width:auto;}
@@ -3194,6 +3195,33 @@ function obtenerExcesosHorasMensuales(){
   });
   return avisos.sort((a,b)=> b.exceso-a.exceso);
 }
+/* Horas de descanso reales alrededor de un día de libranza: desde el fin de la última jornada
+   trabajada (retrocediendo tantos días como haga falta, por si libra varios seguidos) hasta el
+   inicio de la siguiente. Con el ejemplo real: termina el turno el 23 a las 15:00, libra el 24,
+   empieza el 25 a las 15:00 → 48h. Se trabaja en tiempo absoluto (no en minutos de un solo día)
+   para que el cálculo sea correcto aunque el descanso cruce varios días. */
+function horasDescansoLibranza(tecnicoId, fechaIso){
+  const jornadaDelDia = (fIso)=>{
+    const segs = calcularSegmentosDia(tecnicoId, fIso).filter(s=> s.tipo!=="todo-el-dia" && s.inicio!=null && s.fin!=null);
+    return segs.length ? segs : null;
+  };
+  let finAnteriorMs = null;
+  for(let i=1;i<=14 && finAnteriorMs===null;i++){
+    const d = parseIsoLocal(fechaIso); d.setDate(d.getDate()-i);
+    const fIso = isoDate(d);
+    const segs = jornadaDelDia(fIso);
+    if(segs) finAnteriorMs = d.getTime() + Math.max(...segs.map(s=>s.fin))*60000;
+  }
+  let inicioSiguienteMs = null;
+  for(let i=1;i<=14 && inicioSiguienteMs===null;i++){
+    const d = parseIsoLocal(fechaIso); d.setDate(d.getDate()+i);
+    const fIso = isoDate(d);
+    const segs = jornadaDelDia(fIso);
+    if(segs) inicioSiguienteMs = d.getTime() + Math.min(...segs.map(s=>s.inicio))*60000;
+  }
+  if(finAnteriorMs===null || inicioSiguienteMs===null) return null;
+  return (inicioSiguienteMs - finAnteriorMs) / 3600000;
+}
 function obtenerDescansosInsuficientes(){
   const avisos = [];
   const hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -4506,7 +4534,8 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     baseTipoAsignacion = ausencia.tipoAsignacion || "";
   } else if(ausencia){
     // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
-    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", label: ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
+    const horasDescanso = (isAdmin && ausencia.tipo==="libranza") ? horasDescansoLibranza(tecnicoId, fechaIso) : null;
+    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", tipoAusencia:ausencia.tipo, horasDescanso, label: ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
     return segmentos;
   } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
     baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
@@ -4543,7 +4572,8 @@ function segmentosATarjetasHTML(segmentos){
   if(segmentos.length===0) return "";
   return segmentos.map(seg=>{
     if(seg.tipo==="todo-el-dia"){
-      return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}</div>`;
+      const horasTxt = seg.horasDescanso!=null ? ` · ${Math.round(seg.horasDescanso)}h de descanso` : "";
+      return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}${horasTxt}</div>`;
     }
     const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="oficina" ? "🏠 " : (seg.modalidad==="visita" ? "📋 " : (seg.modalidad==="presencial" ? "🏢 " : "")));
     const verEvento = seg.tipo==="evento" && seg.id ? `data-ver-evento="${seg.id}"` : "";
@@ -5121,10 +5151,19 @@ function renderVistaGeneral(){
       }
       const segmentos = calcularSegmentosDia(tid, fechaIso);
       let hayAlgoQueEditar = false;
+      let textoCelda = "";
       if(segmentos.length===1 && segmentos[0].tipo==="todo-el-dia"){
         color = segmentos[0].color;
         titulo = segmentos[0].label + (segmentos[0].nota ? ` — ${segmentos[0].nota}` : "");
         hayAlgoQueEditar = true;
+        if(isAdmin && segmentos[0].tipoAusencia==="libranza"){
+          const horas = horasDescansoLibranza(tid, fechaIso);
+          if(horas!=null){
+            const horasRedondeadas = Math.round(horas);
+            textoCelda = `${horasRedondeadas}h`;
+            titulo += ` — ${horasRedondeadas}h de descanso`;
+          }
+        }
       } else if(segmentos.length){
         // Un evento presencial o de visita técnica destaca con su propio color en el Cuadrante,
         // aunque conviva con la base (Oficina Scope/Teletrabajo/Manual) en Vista técnico. Si hay
@@ -5164,7 +5203,7 @@ function renderVistaGeneral(){
         titulo = "Festivo / fin de semana";
       }
       const clickable = isAdmin && hayAlgoQueEditar;
-      cells += `<td class="${claseExtra} ${clickable?'cuadrante-celda-editable':''}" title="${titulo}" ${clickable?`data-cuadrante-tid="${tid}" data-cuadrante-fecha="${fechaIso}"`:""}><span class="celda-color" style="background:${color};"></span></td>`;
+      cells += `<td class="${claseExtra} ${clickable?'cuadrante-celda-editable':''}" title="${titulo}" ${clickable?`data-cuadrante-tid="${tid}" data-cuadrante-fecha="${fechaIso}"`:""}><span class="celda-color" style="background:${color};">${textoCelda ? `<span class="celda-texto-horas">${textoCelda}</span>` : ""}</span></td>`;
     });
     return `<tr class="${idx%2===1?'fila-par':''}">${cells}</tr>`;
   }).join("");
