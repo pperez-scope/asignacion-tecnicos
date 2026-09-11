@@ -1950,13 +1950,13 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
       htmlMovil += `<div class="day-cell ${diaIso===hoyIso?'today':''}" style="min-height:0;">
         <div class="day-num"><span class="day-num-dow">${diaSemanaTxt}</span> ${d.getDate()}</div>
         ${eventosDia.map(([id,ev])=>{
-          const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
-          const cubierto = nTec>0;
+          const cubierto = eventoEstaCubierto(id);
           const colorEvento = colorFor(ev.calendario);
+          const motivo = cubierto ? "" : motivoSinCubrir(id);
           return `<div class="turno-block ${clickable?'turno-block-clicable':''}" style="border-left-color:${colorEvento};${cubierto?'':'border-left-style:dashed;'}" ${clickable?`data-event-id="${id}"`:""}>
             <div class="turno-horario">${fmtHora(ev.start)}${ev.end?` → ${fmtHora(ev.end)}`:""}</div>
             <div class="turno-cliente">${ev.summary}</div>
-            ${cubierto?"":`<div class="muted" style="color:var(--danger);font-size:10px;font-weight:700;">Sin cubrir</div>`}
+            ${cubierto?"":`<div class="muted" style="color:var(--danger);font-size:10px;font-weight:700;">${motivo || "Sin cubrir"}</div>`}
           </div>`;
         }).join("") || `<p class="muted" style="margin:4px 0;font-size:11px;">—</p>`}
       </div>`;
@@ -2028,8 +2028,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
     html += `<div class="hcal-allday-row"><div class="hcal-time-col-head"></div>`;
     eventosPorDia.forEach(({todoElDia})=>{
       html += `<div class="hcal-allday-col">${todoElDia.map(([id,ev])=>{
-        const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
-        const cubierto = nTec>0;
+        const cubierto = eventoEstaCubierto(id);
         const colorEvento = colorFor(ev.calendario);
         const estilo = cubierto
           ? `border-left-color:${colorEvento};`
@@ -2059,8 +2058,7 @@ function renderWeekGrid(containerId, weekKey, { onlySinCubrir=false, clickable=t
       html += `<div class="hcal-now-line" style="top:${(minutosAhora-TIMELINE_INICIO)*PX_POR_MIN}px;"></div>`;
     }
     conHora.forEach(({id,ev,_inicio,_fin,_carril,_totalCarriles})=>{
-      const nTec = Object.keys(STATE.asignaciones[id] || {}).length;
-      const cubierto = nTec>0;
+      const cubierto = eventoEstaCubierto(id);
       const top = (_inicio-TIMELINE_INICIO)*PX_POR_MIN;
       const alto = Math.max(16, (_fin-_inicio)*PX_POR_MIN);
       // En vez de repartir el ancho a partes iguales entre carriles (columnas estrechas), cada
