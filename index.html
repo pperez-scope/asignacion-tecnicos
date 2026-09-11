@@ -3202,18 +3202,18 @@ function obtenerExcesosHorasMensuales(){
    para que el cálculo sea correcto aunque el descanso cruce varios días. */
 function horasDescansoLibranza(tecnicoId, fechaIso){
   const jornadaDelDia = (fIso)=>{
-    const segs = calcularSegmentosDia(tecnicoId, fIso).filter(s=> s.tipo!=="todo-el-dia" && s.inicio!=null && s.fin!=null);
+    const segs = calcularSegmentosDia(tecnicoId, fIso, true).filter(s=> s.tipo!=="todo-el-dia" && s.inicio!=null && s.fin!=null);
     return segs.length ? segs : null;
   };
   let finAnteriorMs = null;
-  for(let i=1;i<=14 && finAnteriorMs===null;i++){
+  for(let i=1;i<=4 && finAnteriorMs===null;i++){
     const d = parseIsoLocal(fechaIso); d.setDate(d.getDate()-i);
     const fIso = isoDate(d);
     const segs = jornadaDelDia(fIso);
     if(segs) finAnteriorMs = d.getTime() + Math.max(...segs.map(s=>s.fin))*60000;
   }
   let inicioSiguienteMs = null;
-  for(let i=1;i<=14 && inicioSiguienteMs===null;i++){
+  for(let i=1;i<=4 && inicioSiguienteMs===null;i++){
     const d = parseIsoLocal(fechaIso); d.setDate(d.getDate()+i);
     const fIso = isoDate(d);
     const segs = jornadaDelDia(fIso);
@@ -3232,7 +3232,7 @@ function obtenerDescansosInsuficientes(){
     let diaAnterior = null; // { fechaIso, finJornada }
     for(let d = new Date(desde); d <= hasta; d.setDate(d.getDate()+1)){
       const fechaIso = isoDate(d);
-      const segmentos = calcularSegmentosDia(tid, fechaIso).filter(s=> s.tipo!=="todo-el-dia" && s.inicio!=null && s.fin!=null);
+      const segmentos = calcularSegmentosDia(tid, fechaIso, true).filter(s=> s.tipo!=="todo-el-dia" && s.inicio!=null && s.fin!=null);
       if(segmentos.length===0){ diaAnterior = null; continue; } // día sin trabajo: no hay jornada que enlazar con la siguiente
       const inicioJornada = Math.min(...segmentos.map(s=>s.inicio));
       const finJornada = Math.max(...segmentos.map(s=>s.fin));
@@ -4501,7 +4501,7 @@ function rangoEventoConFallback(datos, ev){
   return null; // evento de todo el día sin hora: no se puede posicionar en la franja horaria
 }
 
-function calcularSegmentosDia(tecnicoId, fechaIso){
+function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
@@ -4534,7 +4534,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso){
     baseTipoAsignacion = ausencia.tipoAsignacion || "";
   } else if(ausencia){
     // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
-    const horasDescanso = (isAdmin && ausencia.tipo==="libranza") ? horasDescansoLibranza(tecnicoId, fechaIso) : null;
+    const horasDescanso = (isAdmin && !omitirCalculoDescanso && ausencia.tipo==="libranza") ? horasDescansoLibranza(tecnicoId, fechaIso) : null;
     segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", tipoAusencia:ausencia.tipo, horasDescanso, label: ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
     return segmentos;
   } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
