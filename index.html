@@ -1518,7 +1518,7 @@ let currentUser = null;
 let accessToken = null;
 let isAdmin = false;
 
-let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{}, reglasRequisitos:{} };
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{}, reglasRequisitos:{}, libranzasCanceladas:{} };
 
 /* ---------- HELPERS ---------- */
 function slugify(str){
@@ -2231,6 +2231,7 @@ onValue(ref(db,"configuracion"), (snap)=>{ STATE.configuracion = snap.val() || {
 onValue(ref(db,"avisosCambios"), (snap)=>{ STATE.avisosCambios = snap.val() || {}; render(); });
 onValue(ref(db,"notasTecnico"), (snap)=>{ STATE.notasTecnico = snap.val() || {}; render(); });
 onValue(ref(db,"reglasRequisitos"), (snap)=>{ STATE.reglasRequisitos = snap.val() || {}; primerSnapshotReglas = true; render(); });
+onValue(ref(db,"libranzasCanceladas"), (snap)=>{ STATE.libranzasCanceladas = snap.val() || {}; render(); });
 onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; renderSubmenuCalendarios(); render(); });
 
 /* ---------- TABS ---------- */
@@ -2994,10 +2995,37 @@ async function asignarTecnico(eventId, tecnicoId, horario, descansoMinutos, tipo
 /* Cuando se asigna a un técnico a pesar de tener un conflicto de horario con otro evento ese
    mismo día, el evento anterior se le desasigna automáticamente (ya no puede estar en los dos
    sitios a la vez) y se genera un aviso para que se busque un sustituto en el evento anterior. */
+/* Cuando una libranza ya asignada se cancela porque hace falta asignar al técnico a otra cosa
+   ese mismo día (por necesidad organizativa), se guarda aquí para no perderla de vista: aparece
+   junto a las demás libranzas pendientes, para poder darle una fecha nueva más adelante. */
+async function registrarLibranzaCancelada(tid, fechaOriginal, motivo){
+  const key = push(ref(db,`libranzasCanceladas/${tid}`)).key;
+  await update(ref(db), { [`libranzasCanceladas/${tid}/${key}`]: { fechaOriginal, motivo, libranzaCompensatoria:null, creado:Date.now() } });
+}
+async function resolverLibranzaCancelada(tid, key, fechaOriginal, fechaLibranza){
+  await update(ref(db), {
+    [`libranzasCanceladas/${tid}/${key}/libranzaCompensatoria`]: fechaLibranza,
+    [`ausencias/${tid}/${fechaLibranza}`]: { tipo:"libranza", nota:`Repone la libranza cancelada el ${fmtFecha(fechaOriginal)}` }
+  });
+  toast("Libranza compensatoria asignada");
+}
+async function marcarLibranzaCanceladaNoNecesaria(tid, key){
+  await update(ref(db), { [`libranzasCanceladas/${tid}/${key}/libranzaCompensatoria`]: "no_aplica" });
+  toast("Marcado como no necesario");
+}
 async function resolverConflictosYAvisar(tecnicoId, conflictos, eventoNuevoId){
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || tecnicoId;
   const eventoNuevo = STATE.eventos[eventoNuevoId];
   for(const c of conflictos){
+    if(c.esAusencia){
+      // La libranza (u otra ausencia de día completo) se sustituye por la nueva asignación: se
+      // quita, y si era una libranza, se deja registrada como pendiente de reponer más adelante.
+      await remove(ref(db, `ausencias/${tecnicoId}/${c.fechaAusencia}`));
+      if(c.tipoAusencia==="libranza"){
+        await registrarLibranzaCancelada(tecnicoId, c.fechaAusencia, `Se le asignó "${eventoNuevo?.summary || "otro evento"}" (${fmtFecha(eventoNuevo?.start)}) ese mismo día.`);
+      }
+      continue;
+    }
     const eventoAnteriorId = Object.entries(STATE.eventos).find(([id,ev])=> ev===c.evento)?.[0];
     if(!eventoAnteriorId) continue;
     await desasignarTecnico(eventoAnteriorId, tecnicoId);
@@ -3076,7 +3104,11 @@ async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota
   let d = new Date(fechaInicio);
   const fin = new Date(fechaFin || fechaInicio);
   while(d <= fin){
-    updates[`ausencias/${tecnicoId}/${isoDate(d)}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo);
+    const fechaIso = isoDate(d);
+    if(tipo!=="libranza" && STATE.ausencias[tecnicoId]?.[fechaIso]?.tipo==="libranza"){
+      await registrarLibranzaCancelada(tecnicoId, fechaIso, `Se le asignó "${tipo==="manual" && titulo ? titulo : AUSENCIA_LABELS[tipo]}" ese mismo día.`);
+    }
+    updates[`ausencias/${tecnicoId}/${fechaIso}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo);
     d.setDate(d.getDate()+1);
   }
   await update(ref(db), updates);
@@ -3087,9 +3119,12 @@ async function addAusencia(tecnicoId, fechaInicio, fechaFin, tipo, horario, nota
 async function addAusenciaVariasFechas(tecnicoId, fechas, tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo){
   if(!fechas.length) return;
   const updates = {};
-  fechas.forEach(fecha=>{
+  for(const fecha of fechas){
+    if(tipo!=="libranza" && STATE.ausencias[tecnicoId]?.[fecha]?.tipo==="libranza"){
+      await registrarLibranzaCancelada(tecnicoId, fecha, `Se le asignó "${tipo==="manual" && titulo ? titulo : AUSENCIA_LABELS[tipo]}" ese mismo día.`);
+    }
     updates[`ausencias/${tecnicoId}/${fecha}`] = construirEntradaAusencia(tipo, horario, nota, descansoMinutos, tipoAsignacion, lugar, sala, calendarioAsociado, titulo);
-  });
+  }
   await update(ref(db), updates);
   toast(`Guardado en ${fechas.length} día${fechas.length>1?"s":""}`);
 }
@@ -3284,6 +3319,12 @@ function obtenerLibranzasPendientes(){
       if(!esFindeOFestivo(fecha)) return;
       if(datos.libranzaCompensatoria) return;
       pendientes.push({ origen:"ausencia", tid, fechaTrabajada:fecha, etiqueta: datos.tipo==="manual" && datos.titulo ? datos.titulo : AUSENCIA_LABELS[datos.tipo] });
+    });
+  });
+  Object.entries(STATE.libranzasCanceladas).forEach(([tid, porKey])=>{
+    Object.entries(porKey||{}).forEach(([key, datos])=>{
+      if(datos.libranzaCompensatoria) return;
+      pendientes.push({ origen:"cancelada", tid, key, fechaTrabajada:datos.fechaOriginal, etiqueta: `Libranza cancelada — ${datos.motivo}` });
     });
   });
   pendientes.sort((a,b)=> new Date(a.fechaTrabajada) - new Date(b.fechaTrabajada));
@@ -4377,7 +4418,7 @@ function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNu
   const conflictos = [];
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   if(ausencia && ["libranza","permiso","vacaciones","bajaMedica"].includes(ausencia.tipo)){
-    conflictos.push({ evento:{ summary: AUSENCIA_LABELS[ausencia.tipo] }, horario:"todo el día" });
+    conflictos.push({ evento:{ summary: AUSENCIA_LABELS[ausencia.tipo] }, horario:"todo el día", esAusencia:true, tipoAusencia:ausencia.tipo, fechaAusencia:fechaIso });
   }
   eventosDelDia(fechaIso).forEach(([id, ev])=>{
     if(id === eventoIdActual) return;
@@ -5298,6 +5339,7 @@ function renderAusencias(){
         const input = pendientesList.querySelector(`.input-fecha-libranza[data-idx="${btn.dataset.resolver}"]`);
         if(!input.value) return toast("Elige una fecha para la libranza");
         if(p.origen==="evento") resolverLibranzaPendiente(p.eventId, p.tid, input.value);
+        else if(p.origen==="cancelada") resolverLibranzaCancelada(p.tid, p.key, p.fechaTrabajada, input.value);
         else resolverLibranzaPendienteAusencia(p.tid, p.fechaTrabajada, p.etiqueta, input.value);
       });
     });
@@ -5305,6 +5347,7 @@ function renderAusencias(){
       btn.addEventListener("click", ()=>{
         const p = pendientes[+btn.dataset.noAplica];
         if(p.origen==="evento") marcarLibranzaNoNecesaria(p.eventId, p.tid);
+        else if(p.origen==="cancelada") marcarLibranzaCanceladaNoNecesaria(p.tid, p.key);
         else marcarLibranzaNoNecesariaAusencia(p.tid, p.fechaTrabajada);
       });
     });
