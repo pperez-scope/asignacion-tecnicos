@@ -1431,7 +1431,17 @@ const OFICINA_DEFECTO_ESPECIAL = {
   "Patricia Pérez de la Manga": "09:00–15:00"
 };
 // Personal externo/esporádico: no se les asigna Oficina Scope por defecto.
-const SIN_OFICINA_DEFECTO = ["Joaquín Martín","Irene Álvarez","Laura Rubio"];
+const SIN_OFICINA_DEFECTO = ["Joaquín Martín","Irene Álvarez"];
+/* Laura Rubio pasa de eventual a técnico habitual (jornada estándar de 40h/semana) a partir del
+   21 de septiembre de 2026 — antes de esa fecha se sigue tratando como "sin oficina por
+   defecto" (eventual), igual que hasta ahora, para no alterar el histórico de esos días. */
+const SIN_OFICINA_DEFECTO_HASTA = { "Laura Rubio": "2026-09-20" };
+function tieneOficinaPorDefecto(nombreTecnico, fechaIso){
+  if(SIN_OFICINA_DEFECTO.includes(nombreTecnico)) return false;
+  const hasta = SIN_OFICINA_DEFECTO_HASTA[nombreTecnico];
+  if(hasta && fechaIso <= hasta) return false;
+  return true;
+}
 function horarioOficinaDefecto(nombreTecnico){
   return OFICINA_DEFECTO_ESPECIAL[nombreTecnico] || AUSENCIA_HORARIO_DEFECTO.oficina;
 }
@@ -4511,7 +4521,7 @@ function horasDiaTecnico(tecnicoId, fechaIso){
     }
     return 0;
   }
-  if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
+  if(esDiaLaborable(parseIsoLocal(fechaIso)) && tieneOficinaPorDefecto(nombreTecnico, fechaIso)){
     return Math.max(0, horasDesdeTextoLibre(horarioOficinaDefecto(nombreTecnico)) - descansoOficinaDefecto(nombreTecnico)/60);
   }
   // Ni ausencia ni Oficina Scope por defecto (p.ej. personal externo/esporádico): en ese caso,
@@ -4605,7 +4615,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
     const horasDescanso = (isAdmin && !omitirCalculoDescanso && ausencia.tipo==="libranza") ? horasDescansoLibranza(tecnicoId, fechaIso) : null;
     segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", tipoAusencia:ausencia.tipo, horasDescanso, label: ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
     return segmentos;
-  } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico)){
+  } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && tieneOficinaPorDefecto(nombreTecnico, fechaIso)){
     baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
     baseLabel = "Oficina Scope";
     baseColor = AUSENCIA_COLORS.oficina;
@@ -4970,7 +4980,7 @@ function renderEditorDiaTecnico(){
   }
 
   const ausenciaReal = STATE.ausencias[tecnicoId]?.[fechaIso];
-  const esDefectoOficina = !ausenciaReal && esDiaLaborable(parseIsoLocal(fechaIso)) && !SIN_OFICINA_DEFECTO.includes(nombreTecnico);
+  const esDefectoOficina = !ausenciaReal && esDiaLaborable(parseIsoLocal(fechaIso)) && tieneOficinaPorDefecto(nombreTecnico, fechaIso);
   // Partimos de la entrada real si existe; si no, del valor por defecto de Oficina Scope (si aplica)
   const base = ausenciaReal || (esDefectoOficina ? { tipo:"oficina", horario: horarioOficinaDefecto(nombreTecnico), lugar:"Scope", descansoMinutos: descansoOficinaDefecto(nombreTecnico) } : { tipo:"libranza" });
 
