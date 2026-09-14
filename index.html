@@ -190,6 +190,17 @@
     transition:transform .15s ease;
   }
   .submenu-chevron.expandido{transform:rotate(90deg);}
+  .avisos-categoria-chevron{
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:14px;color:var(--ink-soft);transition:transform .15s ease;flex-shrink:0;
+  }
+  .avisos-categoria-chevron.expandido{transform:rotate(90deg);}
+  .avisos-categoria-header{
+    width:100%;text-align:left;background:none;border:none;padding:14px 16px;
+    display:flex;align-items:center;gap:10px;cursor:pointer;
+    font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:14px;
+  }
+  .avisos-categoria-header:hover{background:var(--bg);}
   .submenu-calendarios{
     padding:4px 10px 8px 40px;
     display:flex;flex-direction:column;gap:2px;
@@ -953,11 +964,12 @@
     </div>
     <nav class="tabs" id="tabs">
       <button data-tab="sincubrir" class="active" id="tabSinCubrirBtn"><span class="tab-icon">📋</span><span>Sin cubrir</span></button>
-      <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span><span class="tab-badge hidden" id="badgeCambiosEventos"></span><span class="submenu-chevron" id="chevronCalendarios">▸</span></button>
+      <button data-tab="asignar"><span class="tab-icon">📅</span><span>Calendarios</span><span class="submenu-chevron" id="chevronCalendarios">▸</span></button>
       <div id="submenuCalendarios" class="submenu-calendarios hidden"></div>
       <button data-tab="tecnico"><span class="tab-icon">👤</span><span>Vista técnico</span></button>
-      <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span><span class="tab-badge hidden" id="badgeDescansos"></span></button>
-      <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span><span class="tab-badge hidden" id="badgeLibranzas"></span></button>
+      <button data-tab="general"><span class="tab-icon">🔲</span><span>Cuadrante</span></button>
+      <button data-tab="ausencias" id="tabAusenciasBtn"><span class="tab-icon">🗂️</span><span>Otras asignaciones</span></button>
+      <button data-tab="avisos" id="tabAvisosBtn" class="hidden"><span class="tab-icon">🔔</span><span>Avisos</span><span class="tab-badge hidden" id="badgeAvisosGenerales"></span></button>
       <button data-tab="admin" id="tabAdminBtn" class="hidden"><span class="tab-icon">⚙️</span><span>Admin</span></button>
     </nav>
     <div class="auth-box" id="authBox">
@@ -1007,10 +1019,6 @@
 
   <!-- ASIGNACIONES -->
   <section id="view-asignar" class="hidden">
-    <div class="card hidden" id="avisosCambiosCard">
-      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">⚠️ Eventos asignados modificados en Calendar</h3>
-      <div id="avisosCambiosList"></div>
-    </div>
     <div class="card" id="asignarWeek"></div>
   </section>
 
@@ -1051,14 +1059,6 @@
 
   <!-- CUADRANTE -->
   <section id="view-general" class="hidden">
-    <div class="card hidden" id="avisosDescansoCard">
-      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">⚠️ Descanso entre jornadas inferior a 12 horas</h3>
-      <div id="avisosDescansoList"></div>
-    </div>
-    <div class="card hidden" id="avisosHorasCard">
-      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">⚠️ Exceso de horas mensuales</h3>
-      <div id="avisosHorasList"></div>
-    </div>
     <div class="card" style="padding:6px 14px;">
       <div class="row" style="align-items:center;">
         <p class="muted" style="margin:0;flex:1;font-size:13px;">4 semanas visibles (anterior, actual y 2 siguientes) · desliza para ver más</p>
@@ -1075,10 +1075,6 @@
 
   <!-- AUSENCIAS -->
   <section id="view-ausencias" class="hidden">
-    <div class="card hidden" id="libranzasPendientesCard">
-      <h3 style="margin:0 0 10px;color:var(--danger);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:15px;">Libranzas compensatorias pendientes</h3>
-      <div id="libranzasPendientesList"></div>
-    </div>
     <div class="card">
       <div class="ausencias-layout">
         <div id="ausenciasForm" class="ausencias-col-form">
@@ -1090,6 +1086,14 @@
   </section>
 
   <!-- ADMIN -->
+  <!-- AVISOS (resumen centralizado, solo admin) -->
+  <section id="view-avisos" class="hidden">
+    <div class="card">
+      <p class="muted" style="margin-top:0;">Reúne aquí, en un solo sitio, todos los avisos que hasta ahora estaban repartidos entre Calendarios, Cuadrante y Otras asignaciones. Pulsa el título de cada categoría para desplegar su lista.</p>
+    </div>
+    <div id="avisosGeneralesAcordeon"></div>
+  </section>
+
   <section id="view-admin" class="hidden">
     <div class="two-col-layout">
       <div class="two-col-layout-col">
@@ -2211,8 +2215,9 @@ onAuthStateChanged(auth, (user)=>{
   document.getElementById("tabAdminBtn").classList.toggle("hidden", !isAdmin);
   document.getElementById("tabSinCubrirBtn").classList.toggle("hidden", !isAdmin);
   document.getElementById("tabAusenciasBtn").classList.toggle("hidden", !isAdmin);
+  document.getElementById("tabAvisosBtn").classList.toggle("hidden", !isAdmin);
   const activeTab = document.querySelector("nav.tabs button.active")?.dataset.tab;
-  if(!isAdmin && (activeTab==="sincubrir" || activeTab==="ausencias" || activeTab==="admin")){
+  if(!isAdmin && (activeTab==="sincubrir" || activeTab==="ausencias" || activeTab==="admin" || activeTab==="avisos")){
     document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
   }
   render();
@@ -3371,126 +3376,26 @@ async function marcarLibranzaNoNecesariaAusencia(tid, fechaTrabajada){
 }
 
 /* ---------- RENDER ---------- */
-function renderBannerLibranzas(){
-  const badge = document.getElementById("badgeLibranzas");
-  if(!badge) return;
-  if(!isAdmin){
-    badge.classList.add("hidden");
-    badge.textContent = "";
-    return;
-  }
-  const pendientes = obtenerLibranzasPendientes();
-  if(pendientes.length===0){
-    badge.classList.add("hidden");
-    badge.textContent = "";
-    return;
-  }
-  badge.classList.remove("hidden");
-  badge.innerHTML = `⚠️ ${pendientes.length}`;
-  badge.title = `${pendientes.length} libranza${pendientes.length>1?"s":""} compensatoria${pendientes.length>1?"s":""} pendiente${pendientes.length>1?"s":""} de asignar`;
-}
-
-function renderAvisosDescanso(){
-  const badge = document.getElementById("badgeDescansos");
-  const card = document.getElementById("avisosDescansoCard");
-  const lista = document.getElementById("avisosDescansoList");
-  const avisosDescanso = isAdmin ? obtenerDescansosInsuficientes() : [];
-  const avisosHoras = isAdmin ? obtenerExcesosHorasMensuales() : [];
-
-  if(badge){
-    const total = avisosDescanso.length + avisosHoras.length;
-    if(total===0){
-      badge.classList.add("hidden");
-      badge.textContent = "";
-    } else {
-      badge.classList.remove("hidden");
-      badge.innerHTML = `⚠️ ${total}`;
-      badge.title = `${avisosDescanso.length} caso${avisosDescanso.length!==1?"s":""} de descanso insuficiente · ${avisosHoras.length} caso${avisosHoras.length!==1?"s":""} de exceso de horas`;
-    }
-  }
-  renderAvisosHorasMensuales(avisosHoras);
-  if(!card || !lista) return;
-  if(avisosDescanso.length===0){
-    card.classList.add("hidden");
-    return;
-  }
-  card.classList.remove("hidden");
-  lista.innerHTML = avisosDescanso.map((av,idx)=>{
-    const horas = Math.floor(av.descansoMin/60);
-    const minutos = av.descansoMin%60;
-    return `<div class="event-row">
-      <div class="event-fecha">${fmtFecha(av.fechaAnterior)}</div>
-      <div style="flex:1;">
-        <strong>${av.nombre}</strong><br>
-        <span class="muted">Termina a las ${minutosAHora(av.finAnterior%1440)} del ${fmtFecha(av.fechaAnterior)} y empieza a las ${minutosAHora(av.inicioSiguiente%1440)} del ${fmtFecha(av.fechaSiguiente)} — solo ${horas}h ${minutos>0?`${minutos} min`:""} de descanso.</span>
-      </div>
-      <button class="btn btn-teal" data-ver-descanso="${idx}">Ver técnico</button>
-    </div>`;
-  }).join("");
-  lista.querySelectorAll("[data-ver-descanso]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      const av = avisosDescanso[+btn.dataset.verDescanso];
-      try{ localStorage.setItem("ultimoTecnicoSeleccionado", av.tid); }catch(e){}
-      document.getElementById("selectTecnico").value = av.tid;
-      weekState.tecnico = startOfWeek(parseIsoLocal(av.fechaAnterior));
-      document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
-    });
-  });
-}
 const NOMBRES_MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-function renderAvisosHorasMensuales(avisos){
-  const card = document.getElementById("avisosHorasCard");
-  const lista = document.getElementById("avisosHorasList");
-  if(!card || !lista) return;
-  if(avisos.length===0){
-    card.classList.add("hidden");
-    return;
-  }
-  card.classList.remove("hidden");
-  lista.innerHTML = avisos.map((av,idx)=>`
-    <div class="event-row">
-      <div class="event-fecha">${NOMBRES_MES[av.month-1]} ${av.year}</div>
-      <div style="flex:1;">
-        <strong>${av.nombre}</strong><br>
-        <span class="muted">${fmtHorasHHMM(av.totalReal)} trabajadas de un máximo de ${fmtHorasHHMM(av.maxEsperado)} ese mes — ${fmtHorasHHMM(av.exceso)} de exceso.</span>
-      </div>
-      <button class="btn btn-teal" data-ver-horas="${idx}">Ver técnico</button>
-    </div>
-  `).join("");
-  lista.querySelectorAll("[data-ver-horas]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      const av = avisos[+btn.dataset.verHoras];
-      try{ localStorage.setItem("ultimoTecnicoSeleccionado", av.tid); }catch(e){}
-      document.getElementById("selectTecnico").value = av.tid;
-      tecnicoModo = "mes";
-      mesTecnicoActual = new Date(av.year, av.month-1, 1);
-      document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
-    });
-  });
-}
-function renderAvisosCambios(){
-  const badge = document.getElementById("badgeCambiosEventos");
-  const card = document.getElementById("avisosCambiosCard");
-  const lista = document.getElementById("avisosCambiosList");
-  const avisos = Object.entries(STATE.avisosCambios || {}).sort((a,b)=> (b[1].creado||0)-(a[1].creado||0));
+let avisosGeneralesExpandidos = {};
+function renderAvisosGenerales(){
+  const badge = document.getElementById("badgeAvisosGenerales");
+  const cont = document.getElementById("avisosGeneralesAcordeon");
+  if(!cont) return;
+  if(!isAdmin){ cont.innerHTML = ""; if(badge){ badge.classList.add("hidden"); badge.textContent=""; } return; }
+
+  const avisosCambios = Object.entries(STATE.avisosCambios||{}).sort((a,b)=>(b[1].creado||0)-(a[1].creado||0));
+  const avisosDescanso = obtenerDescansosInsuficientes();
+  const avisosHoras = obtenerExcesosHorasMensuales();
+  const libranzasPendientes = obtenerLibranzasPendientes();
+  const total = avisosCambios.length + avisosDescanso.length + avisosHoras.length + libranzasPendientes.length;
 
   if(badge){
-    if(!isAdmin || avisos.length===0){
-      badge.classList.add("hidden");
-      badge.textContent = "";
-    } else {
-      badge.classList.remove("hidden");
-      badge.innerHTML = `⚠️ ${avisos.length}`;
-      badge.title = `${avisos.length} evento${avisos.length>1?"s":""} asignado${avisos.length>1?"s":""} modificado${avisos.length>1?"s":""} en Calendar`;
-    }
+    if(total===0){ badge.classList.add("hidden"); badge.textContent=""; }
+    else { badge.classList.remove("hidden"); badge.innerHTML = `⚠️ ${total}`; }
   }
-  if(!card || !lista) return;
-  if(!isAdmin || avisos.length===0){
-    card.classList.add("hidden");
-    return;
-  }
-  card.classList.remove("hidden");
-  lista.innerHTML = avisos.map(([id, av])=>{
+
+  const filasAvisosCambios = ()=> avisosCambios.map(([id, av])=>{
     const tecnicosTxt = av.tecnicos && av.tecnicos.length ? av.tecnicos.join(", ") : "sin técnicos con nombre";
     const icono = av.tipo==="eliminado" ? "🗑️" : (av.tipo==="reasignado" ? "🔁" : (av.tipo==="libranza_disfrutada" ? "🏖️" : "🔄"));
     const detalle = av.tipo==="eliminado"
@@ -3498,46 +3403,131 @@ function renderAvisosCambios(){
       : (av.tipo==="reasignado" || av.tipo==="libranza_disfrutada")
       ? av.detalleReasignado
       : `Ha cambiado de ${fmtFecha(av.fechaAntigua)} ${fmtHora(av.fechaAntigua)} a ${fmtFecha(av.fechaNueva)} ${fmtHora(av.fechaNueva)}.`;
-    const conflictosHtml = (av.conflictosPorTecnico && av.conflictosPorTecnico.length) ? `
-      <div style="margin-top:6px;padding:6px 10px;background:#FDE7E1;border-radius:6px;color:#7A2E1D;font-size:12px;">
-        ⚠️ <strong>Choca con otra asignación en la nueva fecha:</strong><br>
-        ${av.conflictosPorTecnico.map(c=>`${c.tecnico} ya tiene ${c.conflictos.join(", ")}`).join("<br>")}
-      </div>
-    ` : "";
     return `<div class="event-row">
       <div class="event-fecha">${icono}</div>
       <div style="flex:1;">
         <strong>${av.resumen}</strong> · ${CALENDARIOS[av.calendario]?.nombre || av.calendario}<br>
         <span class="muted">${detalle}${(av.tipo!=="reasignado" && av.tipo!=="libranza_disfrutada")?` Asignado a: ${tecnicosTxt}.`:""}</span>
-        ${conflictosHtml}
       </div>
-      ${av.tipo!=="eliminado" && STATE.eventos[av.eventId] ? `<button class="btn btn-teal" data-ver-aviso="${id}">Ver evento</button>` : ""}
-      <button class="btn btn-ghost" data-descartar-aviso="${id}">Descartar</button>
+      ${av.tipo!=="eliminado" && STATE.eventos[av.eventId] ? `<button class="btn btn-teal" data-avisogen-ver-evento="${id}">Ver evento</button>` : ""}
+      <button class="btn btn-ghost" data-avisogen-descartar="${id}">Descartar</button>
     </div>`;
   }).join("");
 
-  lista.querySelectorAll("[data-descartar-aviso]").forEach(btn=>{
-    btn.addEventListener("click", async ()=>{
-      await remove(ref(db, `avisosCambios/${btn.dataset.descartarAviso}`));
+  const filasDescanso = ()=> avisosDescanso.map((av,idx)=>{
+    const horas = Math.floor(av.descansoMin/60), minutos = av.descansoMin%60;
+    return `<div class="event-row">
+      <div class="event-fecha">${fmtFecha(av.fechaAnterior)}</div>
+      <div style="flex:1;">
+        <strong>${av.nombre}</strong><br>
+        <span class="muted">Termina a las ${minutosAHora(av.finAnterior%1440)} del ${fmtFecha(av.fechaAnterior)} y empieza a las ${minutosAHora(av.inicioSiguiente%1440)} del ${fmtFecha(av.fechaSiguiente)} — solo ${horas}h ${minutos>0?`${minutos} min`:""} de descanso.</span>
+      </div>
+      <button class="btn btn-teal" data-avisogen-ver-descanso="${idx}">Ver técnico</button>
+    </div>`;
+  }).join("");
+
+  const filasHoras = ()=> avisosHoras.map((av,idx)=>`
+    <div class="event-row">
+      <div class="event-fecha">${NOMBRES_MES[av.month-1]} ${av.year}</div>
+      <div style="flex:1;">
+        <strong>${av.nombre}</strong><br>
+        <span class="muted">${fmtHorasHHMM(av.totalReal)} trabajadas de un máximo de ${fmtHorasHHMM(av.maxEsperado)} ese mes — ${fmtHorasHHMM(av.exceso)} de exceso.</span>
+      </div>
+      <button class="btn btn-teal" data-avisogen-ver-horas="${idx}">Ver técnico</button>
+    </div>
+  `).join("");
+
+  const filasLibranzas = ()=> libranzasPendientes.map((p,idx)=>{
+    const nombre = STATE.tecnicos[p.tid]?.nombre || p.tid;
+    return `<div class="event-row">
+      <div class="event-fecha">${fmtFecha(p.fechaTrabajada)}</div>
+      <div style="flex:1;"><strong>${nombre}</strong> · ${p.etiqueta}</div>
+      <input type="date" class="input-fecha-libranza-gen" data-idx="${idx}" style="width:160px;">
+      <button class="btn btn-amber" data-avisogen-resolver-libranza="${idx}">Asignar</button>
+      <button class="btn btn-ghost" data-avisogen-no-aplica-libranza="${idx}">No aplica</button>
+    </div>`;
+  }).join("");
+
+  const categorias = [
+    { key:"cambios", titulo:"🔄 Eventos modificados en Calendar", count:avisosCambios.length, render:filasAvisosCambios },
+    { key:"descanso", titulo:"⚠️ Descanso entre jornadas inferior a 12 horas", count:avisosDescanso.length, render:filasDescanso },
+    { key:"horas", titulo:"⚠️ Exceso de horas mensuales", count:avisosHoras.length, render:filasHoras },
+    { key:"libranzas", titulo:"⚠️ Libranzas pendientes", count:libranzasPendientes.length, render:filasLibranzas }
+  ];
+
+  cont.innerHTML = categorias.map(cat=>{
+    const expandido = !!avisosGeneralesExpandidos[cat.key];
+    return `<div class="card" style="padding:0;overflow:hidden;">
+      <button class="avisos-categoria-header" data-toggle-categoria="${cat.key}" style="color:${cat.count?'var(--danger)':'var(--ink-soft)'};">
+        <span class="avisos-categoria-chevron ${expandido?'expandido':''}">▸</span>
+        <span style="flex:1;">${cat.titulo}</span>
+        <span class="tab-badge ${cat.count?'':'hidden'}">⚠️ ${cat.count}</span>
+      </button>
+      <div class="${expandido?'':'hidden'}" style="padding:0 16px 16px;">
+        ${cat.count ? cat.render() : `<p class="muted" style="margin:0;">Nada que avisar aquí ahora mismo.</p>`}
+      </div>
+    </div>`;
+  }).join("");
+
+  cont.querySelectorAll("[data-toggle-categoria]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      avisosGeneralesExpandidos[btn.dataset.toggleCategoria] = !avisosGeneralesExpandidos[btn.dataset.toggleCategoria];
+      renderAvisosGenerales();
     });
   });
-  lista.querySelectorAll("[data-ver-aviso]").forEach(btn=>{
+  cont.querySelectorAll("[data-avisogen-descartar]").forEach(btn=>{
+    btn.addEventListener("click", ()=> remove(ref(db, `avisosCambios/${btn.dataset.avisogenDescartar}`)));
+  });
+  cont.querySelectorAll("[data-avisogen-ver-evento]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      const av = STATE.avisosCambios[btn.dataset.verAviso];
-      const ev = STATE.eventos[av.eventId];
-      if(!ev) return;
+      const av = STATE.avisosCambios[btn.dataset.avisogenVerEvento];
       eventoSeleccionado = av.eventId; editandoTecnicoId = null;
-      weekState.asignar = startOfWeek(new Date(ev.start));
-      mesAsignacionesActual = new Date(new Date(ev.start).getFullYear(), new Date(ev.start).getMonth(), 1);
-      render();
+      document.getElementById("asignarDetalleCard").classList.remove("hidden");
+      renderAsignarDetalle(eventoSeleccionado);
+    });
+  });
+  cont.querySelectorAll("[data-avisogen-ver-descanso]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const av = avisosDescanso[+btn.dataset.avisogenVerDescanso];
+      try{ localStorage.setItem("ultimoTecnicoSeleccionado", av.tid); }catch(e){}
+      document.getElementById("selectTecnico").value = av.tid;
+      tecnicoModo = "semana";
+      weekState.tecnico = startOfWeek(parseIsoLocal(av.fechaAnterior));
+      document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
+    });
+  });
+  cont.querySelectorAll("[data-avisogen-ver-horas]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const av = avisosHoras[+btn.dataset.avisogenVerHoras];
+      try{ localStorage.setItem("ultimoTecnicoSeleccionado", av.tid); }catch(e){}
+      document.getElementById("selectTecnico").value = av.tid;
+      tecnicoModo = "mes";
+      mesTecnicoActual = new Date(av.year, av.month-1, 1);
+      document.querySelector('nav.tabs button[data-tab="tecnico"]').click();
+    });
+  });
+  cont.querySelectorAll("[data-avisogen-resolver-libranza]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const p = libranzasPendientes[+btn.dataset.avisogenResolverLibranza];
+      const input = cont.querySelector(`.input-fecha-libranza-gen[data-idx="${btn.dataset.avisogenResolverLibranza}"]`);
+      if(!input.value) return toast("Elige una fecha para la libranza");
+      if(p.origen==="evento") resolverLibranzaPendiente(p.eventId, p.tid, input.value);
+      else if(p.origen==="cancelada") resolverLibranzaCancelada(p.tid, p.key, p.fechaTrabajada, input.value);
+      else resolverLibranzaPendienteAusencia(p.tid, p.fechaTrabajada, p.etiqueta, input.value);
+    });
+  });
+  cont.querySelectorAll("[data-avisogen-no-aplica-libranza]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const p = libranzasPendientes[+btn.dataset.avisogenNoAplicaLibranza];
+      if(p.origen==="evento") marcarLibranzaNoNecesaria(p.eventId, p.tid);
+      else if(p.origen==="cancelada") marcarLibranzaCanceladaNoNecesaria(p.tid, p.key);
+      else marcarLibranzaNoNecesariaAusencia(p.tid, p.fechaTrabajada);
     });
   });
 }
 
 function render(){
-  renderBannerLibranzas();
-  renderAvisosCambios();
-  renderAvisosDescanso();
+  renderAvisosGenerales();
   const detalleCard = document.getElementById("asignarDetalleCard");
   if(eventoSeleccionado && STATE.eventos[eventoSeleccionado]){
     detalleCard.classList.remove("hidden");
@@ -5331,45 +5321,6 @@ function renderVistaGeneral(){
 }
 
 function renderAusencias(){
-  const pendientesCard = document.getElementById("libranzasPendientesCard");
-  const pendientesList = document.getElementById("libranzasPendientesList");
-  const pendientes = obtenerLibranzasPendientes();
-  if(pendientes.length===0 || !isAdmin){
-    pendientesCard.classList.add("hidden");
-  } else {
-    pendientesCard.classList.remove("hidden");
-    pendientesList.innerHTML = pendientes.map((p,idx)=>{
-      const nombre = STATE.tecnicos[p.tid]?.nombre || p.tid;
-      return `<div class="event-row">
-        <div class="event-fecha">${fmtFecha(p.fechaTrabajada)}</div>
-        <div style="flex:1;">
-          <strong>${nombre}</strong> · ${p.etiqueta}
-        </div>
-        <input type="date" class="input-fecha-libranza" data-idx="${idx}" style="width:160px;">
-        <button class="btn btn-amber" data-resolver="${idx}">Asignar</button>
-        <button class="btn btn-ghost" data-no-aplica="${idx}">No aplica</button>
-      </div>`;
-    }).join("");
-    pendientesList.querySelectorAll("[data-resolver]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const p = pendientes[+btn.dataset.resolver];
-        const input = pendientesList.querySelector(`.input-fecha-libranza[data-idx="${btn.dataset.resolver}"]`);
-        if(!input.value) return toast("Elige una fecha para la libranza");
-        if(p.origen==="evento") resolverLibranzaPendiente(p.eventId, p.tid, input.value);
-        else if(p.origen==="cancelada") resolverLibranzaCancelada(p.tid, p.key, p.fechaTrabajada, input.value);
-        else resolverLibranzaPendienteAusencia(p.tid, p.fechaTrabajada, p.etiqueta, input.value);
-      });
-    });
-    pendientesList.querySelectorAll("[data-no-aplica]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const p = pendientes[+btn.dataset.noAplica];
-        if(p.origen==="evento") marcarLibranzaNoNecesaria(p.eventId, p.tid);
-        else if(p.origen==="cancelada") marcarLibranzaCanceladaNoNecesaria(p.tid, p.key);
-        else marcarLibranzaNoNecesariaAusencia(p.tid, p.fechaTrabajada);
-      });
-    });
-  }
-
   const formCont = document.getElementById("ausenciasForm");
   if(isAdmin){
     formCont.innerHTML = `
