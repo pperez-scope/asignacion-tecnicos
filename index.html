@@ -1466,13 +1466,17 @@ function salasDeCalendario(claveCal){ return SALAS_CALENDARIO[claveCal] || []; }
 
 const TIPOS_ASIGNACION = [
   "VÍDEO","REALIZACIÓN","SONIDO","LUCES","TCO SUPERVISOR","TCO AUDIOVISUAL",
-  "VÍDEO/LUCES","OP. CAM","FOTO","PRODUCCIÓN","EDICIÓN","ADMINISTRACIÓN","GRAFISMO"
+  "VÍDEO/LUCES","OP. CAM","FOTO","PRODUCCIÓN","EDICIÓN","ADMINISTRACIÓN","GRAFISMO",
+  "FORMACIÓN SONIDO","FORMACIÓN VÍDEO","FORMACIÓN REALIZACIÓN","FORMACIÓN LUCES"
 ];
 // Valor especial que se guarda como "horario" de una asignación cuando todavía no se sabe la
 // hora de citación exacta. Se trata como "sin horario" a efectos de cálculos (duración, horas,
 // solapamientos...), pero se muestra con este texto en vez de una hora, y mantiene el evento en
 // "Sin cubrir" hasta que se sustituya por un horario real.
 const HORARIO_POR_CONFIRMAR = "POR_CONFIRMAR";
+/* La modalidad solo es obligatoria para eventos desde esta fecha en adelante — los anteriores,
+   creados cuando todavía era opcional, no se ven afectados aunque nunca llegaran a tener una. */
+const FECHA_DESDE_MODALIDAD_OBLIGATORIA = "2026-09-14";
 function textoHorario(horario){
   return horario===HORARIO_POR_CONFIRMAR ? "Por confirmar horario de citación" : horario;
 }
@@ -1505,6 +1509,7 @@ function eventoEstaCubierto(eventId){
   const asign = STATE.asignaciones[eventId] || {};
   const datosAsignados = Object.values(asign);
   if(datosAsignados.length===0) return false;
+  if(!STATE.eventos[eventId]?.modalidad && (STATE.eventos[eventId]?.start||"").slice(0,10) >= FECHA_DESDE_MODALIDAD_OBLIGATORIA) return false;
   if(datosAsignados.some(d=> d.horario===HORARIO_POR_CONFIRMAR)) return false;
   const requisitos = STATE.eventos[eventId]?.requisitos || [];
   if(requisitos.length===0) return true;
@@ -3570,6 +3575,7 @@ function motivoSinCubrir(eventId){
   const asign = STATE.asignaciones[eventId] || {};
   const datosAsignados = Object.values(asign);
   if(datosAsignados.length===0) return null;
+  if(!STATE.eventos[eventId]?.modalidad && (STATE.eventos[eventId]?.start||"").slice(0,10) >= FECHA_DESDE_MODALIDAD_OBLIGATORIA) return "❓ Falta elegir la modalidad del evento";
   if(datosAsignados.some(d=> d.horario===HORARIO_POR_CONFIRMAR)) return "⏱️ Horario de citación por confirmar";
   const requisitos = STATE.eventos[eventId]?.requisitos || [];
   if(requisitos.length===0) return null;
@@ -4061,6 +4067,7 @@ function renderAsignarDetalle(eventId){
   if(btnGuardarModalidad){
     btnGuardarModalidad.addEventListener("click", ()=>{
       const modalidad = document.getElementById("eventoModalidad").value;
+      if(!modalidad) return toast("Elige una modalidad antes de guardar");
       const excluirInforme = document.getElementById("eventoExcluirInforme").checked;
       const excluirSinCubrir = document.getElementById("eventoExcluirSinCubrir").checked;
       guardarModalidadEvento(eventId, modalidad, excluirInforme, excluirSinCubrir);
