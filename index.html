@@ -4361,7 +4361,7 @@ function eventosDelDia(fechaIso){
     .sort((a,b)=> new Date(a[1].start) - new Date(b[1].start));
 }
 
-let tecnicoModo = "semana";
+let tecnicoModo = (()=>{ try{ return localStorage.getItem("ultimoTecnicoModo") || "semana"; }catch(e){ return "semana"; } })();
 let mesTecnicoActual = null;
 
 function renderVistaTecnico(){
@@ -4407,11 +4407,13 @@ function renderVistaTecnico(){
     });
   }
 
+  switchEl.querySelectorAll("button").forEach(b=> b.classList.toggle("active", b.dataset.modo===tecnicoModo));
   if(!switchEl.dataset.wired){
     switchEl.dataset.wired = "1";
     switchEl.querySelectorAll("button").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         tecnicoModo = btn.dataset.modo;
+        try{ localStorage.setItem("ultimoTecnicoModo", tecnicoModo); }catch(e){}
         switchEl.querySelectorAll("button").forEach(b=>b.classList.toggle("active", b===btn));
         renderVistaTecnico();
       });
@@ -5674,7 +5676,7 @@ function renderAusencias(){
     document.getElementById("ausenciasList").innerHTML = `<p class="muted">Carga la lista de técnicos desde Admin.</p>`;
     return;
   }
-  const lista = Object.entries(STATE.ausencias[tid] || {}).sort((a,b)=> a[0].localeCompare(b[0]));
+  const lista = Object.entries(STATE.ausencias[tid] || {}).sort((a,b)=> b[0].localeCompare(a[0]));
   const nombreTecListado = STATE.tecnicos[tid]?.nombre || tid;
   const PORPAGINA = 8;
   const totalPaginas = Math.max(1, Math.ceil(lista.length / PORPAGINA));
