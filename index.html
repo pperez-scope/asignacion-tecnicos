@@ -2441,7 +2441,7 @@ function detectarCambioHorarioEvento(id, eventoAntiguo, eventoNuevo){
     const horarioNuevoTxt = `${fmtHora(eventoNuevo.start)}–${fmtHora(eventoNuevo.end)}`;
     Object.entries(asign).forEach(([tid, datos])=>{
       const horarioTecnico = datos.horario || horarioNuevoTxt;
-      const conflictos = obtenerConflictosHorario(tid, id, fechaNuevaIso, horarioTecnico);
+      const conflictos = obtenerConflictosHorario(tid, id, fechaNuevaIso, horarioTecnico, eventoNuevo.modalidad);
       if(conflictos.length){
         conflictosPorTecnico.push({
           tecnico: STATE.tecnicos[tid]?.nombre || tid,
@@ -3875,7 +3875,7 @@ function renderAsignarDetalle(eventId){
          <div class="tecnico-checklist" id="tecnicoChecklist">${tecnicosDisponibles.map(([tid,t])=>{
           const notasTecnicoActivas = notasActivasTecnico(tid, fechaEventoIso);
           const notaHtml = notasTecnicoActivas.length ? `<div class="muted" style="color:#7A4A00;font-weight:600;margin:2px 0 4px 26px;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</div>` : "";
-          const conflictosIniciales = obtenerConflictosHorario(tid, eventId, fechaEventoIso, horarioDefecto);
+          const conflictosIniciales = obtenerConflictosHorario(tid, eventId, fechaEventoIso, horarioDefecto, evento.modalidad);
           const conflictoHtml = `<div class="muted conflicto-disponibilidad ${conflictosIniciales.length?"":"hidden"}" id="conflicto-${tid}" style="color:var(--danger);font-weight:600;margin:2px 0 4px 26px;">⚠️ No disponible: ya tiene ${conflictosIniciales.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}</div>`;
           const otrasIniciales = obtenerOtrasAsignacionesMismoDia(tid, eventId, fechaEventoIso, horarioDefecto);
           const otrasHtml = `<div class="muted otras-asignaciones-dia ${otrasIniciales.length?"":"hidden"}" id="otras-${tid}" style="color:#8A5A00;font-weight:600;margin:2px 0 4px 26px;">🟠 También tiene ese día: ${otrasIniciales.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}</div>`;
@@ -4192,7 +4192,7 @@ function renderAsignarDetalle(eventId){
         const libranzaCompensatoria = inputLibranza ? (inputLibranza.value || null) : undefined;
 
         if(!chkHorarioPorConfirmar?.checked){
-          const conflictos = obtenerConflictosHorario(editandoTecnicoId, eventId, evento.start.slice(0,10), horario);
+          const conflictos = obtenerConflictosHorario(editandoTecnicoId, eventId, evento.start.slice(0,10), horario, evento.modalidad);
           if(conflictos.length){
             const nombreTecnico = STATE.tecnicos[editandoTecnicoId]?.nombre || editandoTecnicoId;
             if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
@@ -4258,7 +4258,7 @@ function renderAsignarDetalle(eventId){
   const actualizarConflictosDisponibilidad = ()=>{
     cont.querySelectorAll(".conflicto-disponibilidad").forEach(div=>{
       const tid = div.id.replace("conflicto-","");
-      const conflictos = obtenerConflictosHorario(tid, eventId, fechaEventoIso, inputHorario.value);
+      const conflictos = obtenerConflictosHorario(tid, eventId, fechaEventoIso, inputHorario.value, evento.modalidad);
       div.classList.toggle("hidden", conflictos.length===0);
       if(conflictos.length){
         div.textContent = `⚠️ No disponible: ya tiene ${conflictos.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}`;
@@ -4338,7 +4338,7 @@ function renderAsignarDetalle(eventId){
       const fechaIso = evento.start.slice(0,10);
       if(!chkHorarioPorConfirmar?.checked){
         for(const {tid} of asignacionesLista){
-          const conflictos = obtenerConflictosHorario(tid, eventId, fechaIso, horario);
+          const conflictos = obtenerConflictosHorario(tid, eventId, fechaIso, horario, evento.modalidad);
           if(conflictos.length){
             const nombreTecnico = STATE.tecnicos[tid]?.nombre || tid;
             if(!confirm(mensajeConflictosHorario(nombreTecnico, conflictos))) return;
@@ -4461,14 +4461,16 @@ function parseRangoMinutos(str){
 
 /* Comprueba si asignar a un técnico en un horario nuevo se solapa con otro evento distinto
    ya asignado ese mismo día. Devuelve la lista de conflictos (evento + horario) encontrados. */
-function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNuevo){
+function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNuevo, modalidadNueva){
   const rangoNuevo = parseRangoMinutos(horarioNuevo);
   if(!rangoNuevo) return []; // sin horario definido, no podemos comparar
+  const nuevaEsVisitaCorta = modalidadNueva==="visita" && (rangoNuevo.fin-rangoNuevo.inicio) <= 4*60;
   const conflictos = [];
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   if(ausencia && ["libranza","permiso","vacaciones","bajaMedica"].includes(ausencia.tipo)){
     conflictos.push({ evento:{ summary: AUSENCIA_LABELS[ausencia.tipo] }, horario:"todo el día", esAusencia:true, tipoAusencia:ausencia.tipo, fechaAusencia:fechaIso });
   }
+  if(nuevaEsVisitaCorta) return conflictos; // una visita técnica de menos de 4h nunca bloquea ni se ve bloqueada
   eventosDelDia(fechaIso).forEach(([id, ev])=>{
     if(id === eventoIdActual) return;
     if(ev.modalidad === "online") return; // online no bloquea: es compatible aunque se solape en horario
@@ -4476,6 +4478,9 @@ function obtenerConflictosHorario(tecnicoId, eventoIdActual, fechaIso, horarioNu
     if(!datos) return;
     const rangoExistente = parseRangoMinutos(datos.horario);
     if(!rangoExistente) return;
+    // Una visita técnica corta (≤4h) tampoco bloquea desde el lado de la asignación ya existente:
+    // puede convivir con lo que sea, se mantienen ambas.
+    if(ev.modalidad==="visita" && (rangoExistente.fin-rangoExistente.inicio) <= 4*60) return;
     const seSolapan = rangoNuevo.inicio < rangoExistente.fin && rangoExistente.inicio < rangoNuevo.fin;
     if(seSolapan) conflictos.push({ evento: ev, horario: datos.horario });
   });
@@ -4496,7 +4501,8 @@ function obtenerOtrasAsignacionesMismoDia(tecnicoId, eventoIdActual, fechaIso, h
     const datos = STATE.asignaciones[id]?.[tecnicoId];
     if(!datos) return;
     const rangoExistente = parseRangoMinutos(datos.horario);
-    if(rangoNuevo && rangoExistente && ev.modalidad !== "online"){
+    const esVisitaCorta = ev.modalidad==="visita" && rangoExistente && (rangoExistente.fin-rangoExistente.inicio) <= 4*60;
+    if(rangoNuevo && rangoExistente && ev.modalidad !== "online" && !esVisitaCorta){
       const seSolapan = rangoNuevo.inicio < rangoExistente.fin && rangoExistente.inicio < rangoNuevo.fin;
       if(seSolapan) return; // ese caso ya lo cubre el aviso rojo de conflicto
     }
@@ -5332,8 +5338,15 @@ function renderVistaGeneral(){
       } else if(segmentos.length){
         // Un evento presencial o de visita técnica destaca con su propio color en el Cuadrante,
         // aunque conviva con la base (Oficina Scope/Teletrabajo/Manual) en Vista técnico. Si hay
-        // más de uno ese día, la celda se divide en una franja de color por cada evento.
-        const eventosDestacados = segmentos.filter(s=> s.tipo==="evento" && modalidadUsaColorPropioEnCuadrante(s.modalidad));
+        // más de uno ese día, la celda se divide en una franja de color por cada evento — salvo
+        // que sea una visita técnica de 4h o menos coincidiendo con un presencial ese mismo día:
+        // en ese caso manda el color del presencial, sin dividir la celda.
+        const hayPresencialEseDia = segmentos.some(s=> s.tipo==="evento" && s.modalidad==="presencial");
+        const eventosDestacados = segmentos.filter(s=>{
+          if(s.tipo!=="evento" || !modalidadUsaColorPropioEnCuadrante(s.modalidad)) return false;
+          if(s.modalidad==="visita" && hayPresencialEseDia && (s.fin-s.inicio)<=4*60) return false;
+          return true;
+        });
         const base = segmentos.find(s=> s.tipo==="base");
         if(eventosDestacados.length){
           eventosDestacados.forEach(ev=> clientesUsados.add(claveCalendarioReal(ev.ev.calendario)));
