@@ -3877,7 +3877,7 @@ function renderAsignarDetalle(eventId){
           const notaHtml = notasTecnicoActivas.length ? `<div class="muted" style="color:#7A4A00;font-weight:600;margin:2px 0 4px 26px;">📝 ${notasTecnicoActivas.map(([,n])=>n.texto).join(" / ")}</div>` : "";
           const conflictosIniciales = obtenerConflictosHorario(tid, eventId, fechaEventoIso, horarioDefecto, evento.modalidad);
           const conflictoHtml = `<div class="muted conflicto-disponibilidad ${conflictosIniciales.length?"":"hidden"}" id="conflicto-${tid}" style="color:var(--danger);font-weight:600;margin:2px 0 4px 26px;">⚠️ No disponible: ya tiene ${conflictosIniciales.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}</div>`;
-          const otrasIniciales = obtenerOtrasAsignacionesMismoDia(tid, eventId, fechaEventoIso, horarioDefecto);
+          const otrasIniciales = obtenerOtrasAsignacionesMismoDia(tid, eventId, fechaEventoIso, horarioDefecto, evento.modalidad);
           const otrasHtml = `<div class="muted otras-asignaciones-dia ${otrasIniciales.length?"":"hidden"}" id="otras-${tid}" style="color:#8A5A00;font-weight:600;margin:2px 0 4px 26px;">🟠 También tiene ese día: ${otrasIniciales.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}</div>`;
           return `<div class="check-item-row" data-nombre="${normalizar(t.nombre)}">
             <label class="check-item"><input type="checkbox" class="chk-nuevo-tecnico" value="${tid}" data-tid="${tid}"> ${t.nombre}</label>
@@ -4266,7 +4266,7 @@ function renderAsignarDetalle(eventId){
     });
     cont.querySelectorAll(".otras-asignaciones-dia").forEach(div=>{
       const tid = div.id.replace("otras-","");
-      const otras = obtenerOtrasAsignacionesMismoDia(tid, eventId, fechaEventoIso, inputHorario.value);
+      const otras = obtenerOtrasAsignacionesMismoDia(tid, eventId, fechaEventoIso, inputHorario.value, evento.modalidad);
       div.classList.toggle("hidden", otras.length===0);
       if(otras.length){
         div.textContent = `🟠 También tiene ese día: ${otras.map(c=>`"${c.evento.summary}" (${c.horario})`).join(", ")}`;
@@ -4493,8 +4493,9 @@ function mensajeConflictosHorario(nombreTecnico, conflictos){
 /* Igual que obtenerConflictosHorario, pero para el caso menos grave: el técnico tiene otra cosa
    asignada el mismo día, con un horario que NO llega a solaparse (así que en principio sí podría
    compaginar ambas) — un aviso a tener en cuenta, no un bloqueo. */
-function obtenerOtrasAsignacionesMismoDia(tecnicoId, eventoIdActual, fechaIso, horarioNuevo){
+function obtenerOtrasAsignacionesMismoDia(tecnicoId, eventoIdActual, fechaIso, horarioNuevo, modalidadNueva){
   const rangoNuevo = parseRangoMinutos(horarioNuevo);
+  const nuevaEsVisitaCorta = modalidadNueva==="visita" && rangoNuevo && (rangoNuevo.fin-rangoNuevo.inicio) <= 4*60;
   const otras = [];
   eventosDelDia(fechaIso).forEach(([id, ev])=>{
     if(id === eventoIdActual) return;
@@ -4502,7 +4503,11 @@ function obtenerOtrasAsignacionesMismoDia(tecnicoId, eventoIdActual, fechaIso, h
     if(!datos) return;
     const rangoExistente = parseRangoMinutos(datos.horario);
     const esVisitaCorta = ev.modalidad==="visita" && rangoExistente && (rangoExistente.fin-rangoExistente.inicio) <= 4*60;
-    if(rangoNuevo && rangoExistente && ev.modalidad !== "online" && !esVisitaCorta){
+    // Si ninguno de los dos lados es una visita corta, el solapamiento ya lo cubre el aviso rojo
+    // de conflicto y no hace falta repetirlo aquí. Pero si alguno de los dos SÍ es una visita
+    // corta, el rojo ya no bloquea ese caso — así que aquí sí interesa avisar (en ámbar) de dónde
+    // está el técnico, para poder comprobar que quien esté libre en ese sitio pueda atenderla.
+    if(rangoNuevo && rangoExistente && ev.modalidad !== "online" && !esVisitaCorta && !nuevaEsVisitaCorta){
       const seSolapan = rangoNuevo.inicio < rangoExistente.fin && rangoExistente.inicio < rangoNuevo.fin;
       if(seSolapan) return; // ese caso ya lo cubre el aviso rojo de conflicto
     }
