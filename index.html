@@ -4633,26 +4633,24 @@ function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
   const eventosDia = eventosDelDia(fechaIso).filter(([id])=> STATE.asignaciones[id]?.[tecnicoId]);
   const ausencia = STATE.ausencias[tecnicoId]?.[fechaIso];
   const nombreTecnico = STATE.tecnicos[tecnicoId]?.nombre || "";
-  const hayPresencial = eventosDia.some(([id,ev])=> eventoReemplazaBase(ev, STATE.asignaciones[id][tecnicoId]));
+  const eventosPresenciales = eventosDia.filter(([id,ev])=> eventoReemplazaBase(ev, STATE.asignaciones[id][tecnicoId]));
   const segmentos = [];
 
-  // Evento(s) presencial(es): ocupan al técnico físicamente, van tal cual y no hay base debajo.
-  if(hayPresencial){
-    eventosDia.forEach(([id,ev])=>{
-      const datos = STATE.asignaciones[id][tecnicoId];
-      const rango = rangoEventoConFallback(datos, ev);
-      segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:modalidadEfectiva(ev,datos), lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
-    });
-    // El horario realmente asignado (con montaje/desmontaje) puede no coincidir con el orden bruto
-    // del evento en Calendar, así que se reordenan aquí por el horario final antes de mostrarlos.
-    segmentos.sort((a,b)=> (a.inicio??0) - (b.inicio??0));
+  // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): bloquea el
+  // día entero, no hay nada más que calcular.
+  if(ausencia && !["oficina","manual","teletrabajo","mites"].includes(ausencia.tipo)){
+    const horasDescanso = (isAdmin && !omitirCalculoDescanso && ausencia.tipo==="libranza") ? horasDescansoLibranza(tecnicoId, fechaIso) : null;
+    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", tipoAusencia:ausencia.tipo, horasDescanso, label: ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
     return segmentos;
   }
 
-  // Sin evento presencial: calculamos el/los bloque(s) base (ausencia con horario, u Oficina Scope
-  // por defecto) — puede haber más de un tramo si el horario es partido (con descanso a mediodía).
+  // Bloque(s) base: ausencia con horario propio (oficina/manual/teletrabajo/mites) u Oficina Scope
+  // por defecto — puede haber más de un tramo si el horario es partido (con descanso a mediodía).
+  // Si algún tramo se solapa de verdad con un evento presencial, ese tramo se omite (el presencial
+  // manda ahí); el resto de tramos que no coincidan en el tiempo se muestran con normalidad, igual
+  // que ya conviven los eventos online con la base.
   let baseRangos = [], baseLabel = "", baseColor = "", baseDescanso = null, baseLugar = "", baseSala = "", baseTipoAsignacion = "";
-  if(ausencia && (ausencia.tipo==="oficina"||ausencia.tipo==="manual"||ausencia.tipo==="teletrabajo"||ausencia.tipo==="mites") && ausencia.horario){
+  if(ausencia && ausencia.horario){
     baseRangos = parseRangosMultiples(ausencia.horario);
     baseLabel = ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo];
     baseColor = ausencia.calendarioAsociado ? colorFor(ausencia.calendarioAsociado) : (AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO);
@@ -4660,34 +4658,41 @@ function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
     baseLugar = ausencia.lugar || "";
     baseSala = ausencia.sala || "";
     baseTipoAsignacion = ausencia.tipoAsignacion || "";
-  } else if(ausencia){
-    // Ausencia de todo el día sin horario (libranza, permiso, vacaciones, baja médica): no es partible
-    const horasDescanso = (isAdmin && !omitirCalculoDescanso && ausencia.tipo==="libranza") ? horasDescansoLibranza(tecnicoId, fechaIso) : null;
-    segmentos.push({ inicio:TIMELINE_INICIO, fin:TIMELINE_FIN, tipo:"todo-el-dia", tipoAusencia:ausencia.tipo, horasDescanso, label: ausencia.tipo==="manual" && ausencia.titulo ? ausencia.titulo : AUSENCIA_LABELS[ausencia.tipo], color:AUSENCIA_COLORS[ausencia.tipo] || COLOR_MANUAL_SIN_CALENDARIO, nota:ausencia.nota||"" });
-    return segmentos;
-  } else if(esDiaLaborable(parseIsoLocal(fechaIso)) && tieneOficinaPorDefecto(nombreTecnico, fechaIso)){
+  } else if(!ausencia && esDiaLaborable(parseIsoLocal(fechaIso)) && tieneOficinaPorDefecto(nombreTecnico, fechaIso)){
     baseRangos = parseRangosMultiples(horarioOficinaDefecto(nombreTecnico));
     baseLabel = "Oficina Scope";
     baseColor = AUSENCIA_COLORS.oficina;
     baseDescanso = descansoOficinaDefecto(nombreTecnico);
     baseLugar = "Scope";
   }
+  const rangosPresenciales = eventosPresenciales.map(([id,ev])=> rangoEventoConFallback(STATE.asignaciones[id][tecnicoId], ev)).filter(Boolean);
+  baseRangos = baseRangos.filter(baseRango=>
+    !rangosPresenciales.some(rp=> baseRango.inicio < rp.fin && rp.inicio < baseRango.fin)
+  );
 
+  // Evento(s) presencial(es): ocupan al técnico físicamente en su franja concreta.
+  eventosPresenciales.forEach(([id,ev])=>{
+    const datos = STATE.asignaciones[id][tecnicoId];
+    const rango = rangoEventoConFallback(datos, ev);
+    segmentos.push({ id, inicio: rango?rango.inicio:null, fin: rango?rango.fin:null, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:modalidadEfectiva(ev,datos), lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
+  });
+
+  // El resto de eventos (online, visita corta, etc.) y el bloque base que no se solape con ningún
+  // presencial se apilan igual que siempre, como tarjetas propias en orden cronológico.
   const eventosOnline = eventosDia
+    .filter(([id])=> !eventosPresenciales.some(([idP])=> idP===id))
     .map(([id,ev])=>({ id, ev, datos: STATE.asignaciones[id][tecnicoId], rango: rangoEventoConFallback(STATE.asignaciones[id][tecnicoId], ev) }))
-    .filter(x=>x.rango)
-    .sort((a,b)=> a.rango.inicio - b.rango.inicio);
+    .filter(x=>x.rango);
 
-  // El bloque base se muestra completo, sin cortarlo alrededor de los eventos online: partirlo
-  // daba la sensación confusa de que había un descanso distinto en cada mitad. En vez de eso,
-  // el/los evento(s) online se apilan como tarjetas propias junto a él, en orden cronológico.
   baseRangos.forEach(baseRango=>{
     segmentos.push({ inicio:baseRango.inicio, fin:baseRango.fin, tipo:"base", label:baseLabel, color:baseColor, descansoMinutos:baseDescanso, lugar:baseLugar, sala:baseSala, tipoAsignacion:baseTipoAsignacion });
   });
   eventosOnline.forEach(({id,ev,rango,datos})=>{
     segmentos.push({ id, inicio:rango.inicio, fin:rango.fin, tipo:"evento", label:ev.summary, color:colorFor(ev.calendario), modalidad:modalidadEfectiva(ev,datos), lugar:datos.lugar||"", sala:datos.sala||"", tipoAsignacion:datos.tipoAsignacion||"", descansoMinutos:datos.descansoMinutos||null, datos, ev });
   });
-  segmentos.sort((a,b)=> a.inicio-b.inicio);
+  // El horario realmente asignado (con montaje/desmontaje) puede no coincidir con el orden bruto
+  // del evento en Calendar, así que se reordenan aquí por el horario final antes de mostrarlos.
+  segmentos.sort((a,b)=> (a.inicio??0) - (b.inicio??0));
 
   return segmentos;
 }
