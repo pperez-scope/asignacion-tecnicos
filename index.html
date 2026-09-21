@@ -4706,7 +4706,7 @@ function segmentosATarjetasHTML(segmentos){
   return segmentos.map(seg=>{
     if(seg.tipo==="todo-el-dia"){
       const horasTxt = seg.horasDescanso!=null ? ` · ${Math.round(seg.horasDescanso)}h de descanso` : "";
-      return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}${horasTxt}</div>`;
+      return `<div class="tag" style="background:${seg.color};color:#fff;padding:3px 6px;border-radius:4px;display:inline-block;margin-bottom:3px;">${seg.label}${horasTxt}</div>${seg.nota?`<div class="muted" style="font-size:11px;margin:-1px 0 3px;">${seg.nota}</div>`:""}`;
     }
     const icono = seg.modalidad==="online" ? "💻 " : (seg.modalidad==="oficina" ? "🏠 " : (seg.modalidad==="visita" ? "📋 " : (seg.modalidad==="presencial" ? "🏢 " : "")));
     const verEvento = seg.tipo==="evento" && seg.id ? `data-ver-evento="${seg.id}"` : "";
@@ -5226,6 +5226,7 @@ function renderCuadranteDia(){
           const horasTxt = seg.horasDescanso!=null ? ` · ${Math.round(seg.horasDescanso)}h de descanso` : "";
           return `<div class="turno-block" style="border-left-color:${seg.color};">
             <div class="turno-cliente">${seg.label}${horasTxt}</div>
+            ${seg.nota?`<div class="muted" style="font-size:11px;">${seg.nota}</div>`:""}
           </div>`;
         }
         const horaTxt = seg.tipo==="evento" && seg.datos?.horario===HORARIO_POR_CONFIRMAR
