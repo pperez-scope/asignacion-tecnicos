@@ -775,6 +775,9 @@
     border-top:1px dashed var(--line);
     font-size:11px;font-weight:700;color:var(--teal);text-align:right;
   }
+  .fichaje-holded{
+    margin-top:3px;font-size:10px;color:var(--amber);font-weight:600;
+  }
   .week-total-cell{
     background:var(--mint);
     border:1px solid var(--line);
@@ -1142,6 +1145,13 @@
       <div class="two-col-layout-col">
         <h3 class="admin-col-title">Configuración e informes</h3>
         <div class="card">
+          <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Control horario (Holded)</h3>
+          <p class="muted" style="margin-top:0;">Sube aquí el Excel de "Informe de horas trabajadas" tal como lo exporta Holded (un mes completo, una semana o una quincena, da igual el tramo). Antes de guardar nada, te dejo revisar con qué técnico de la app se ha emparejado cada nombre.</p>
+          <input type="file" id="inputHoldedExcel" accept=".xlsx,.xls">
+          <button class="btn btn-amber" id="btnProcesarHolded" style="margin-top:8px;">Procesar Excel</button>
+          <p class="muted" id="holdedProcesarStatus"></p>
+        </div>
+        <div class="card">
           <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Notas sobre técnicos</h3>
           <p class="muted" style="margin-top:0;">Apunta aquí circunstancias puntuales de un técnico con fecha (por ejemplo, "del 4 al 8 de octubre prefiere turnos de mañana"). La nota aparecerá sola, destacada, al asignar ese técnico a un evento en esas fechas o al consultar su Vista técnico esa semana — no hace falta que te acuerdes de mirarlo.</p>
           <div class="row row-compact">
@@ -1267,6 +1277,11 @@
 <div class="modal-overlay hidden" id="asignarDetalleCard">
   <div class="modal-box">
     <div id="asignarDetalle"></div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="holdedRevisionCard">
+  <div class="modal-box" style="max-width:700px;">
+    <div id="holdedRevision"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -1555,7 +1570,7 @@ let currentUser = null;
 let accessToken = null;
 let isAdmin = false;
 
-let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{}, reglasRequisitos:{}, libranzasCanceladas:{} };
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{}, reglasRequisitos:{}, libranzasCanceladas:{}, fichajesHolded:{}, holdedEmparejamientos:{} };
 
 /* ---------- HELPERS ---------- */
 function slugify(str){
@@ -1608,6 +1623,96 @@ function fmtFecha(iso){
 }
 /* Texto de la nota que se guarda en una libranza compensatoria, incluyendo la fecha
    del día de fin de semana/festivo que compensa, para saber de un vistazo a qué corresponde. */
+/* ---------- CONTROL HORARIO (HOLDED) ---------- */
+function normalizarNombreHolded(s){
+  return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/\s+/g," ");
+}
+/* Convierte "9:00"/"20:15" a minutos desde medianoche. Devuelve null si no se puede leer. */
+function horaHoldedAMinutos(str){
+  const m = (str||"").toString().trim().match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return null;
+  return parseInt(m[1],10)*60 + parseInt(m[2],10);
+}
+/* Convierte "08:07 h." (tal como lo exporta Holded) a horas decimales (8.1166...). */
+function duracionHoldedAHoras(str){
+  const m = (str||"").toString().trim().match(/^(\d+):(\d{2})/);
+  if(!m) return 0;
+  return parseInt(m[1],10) + parseInt(m[2],10)/60;
+}
+/* Recorre las filas crudas del Excel de Holded (una hoja, un bloque por técnico) y devuelve un
+   array de { nombreHolded, sesiones:[{fechaIso, horaEntrada, horaSalida, horas}] }. Una fila de
+   cabecera de técnico se reconoce porque la columna A es texto y contiene " - ID "; el resto de
+   filas de ese bloque son sesiones (columna A = fecha) hasta la fila "Total" o el siguiente
+   técnico. Las filas vacías y de total se ignoran solas, al no cumplir ninguna de esas dos
+   condiciones. */
+function parsearFilasHolded(rows){
+  const bloques = [];
+  let actual = null;
+  rows.forEach(row=>{
+    const a = row[0];
+    if(typeof a === "string" && a.includes(" - ID ")){
+      actual = { nombreHolded: a.split(" - ID ")[0].trim(), sesiones: [] };
+      bloques.push(actual);
+      return;
+    }
+    if(!actual) return;
+    if(a instanceof Date){
+      const horaEntrada = (row[1]||"").toString().trim();
+      const horaSalida = (row[3]||"").toString().trim();
+      const horas = duracionHoldedAHoras(row[5]);
+      const fechaIso = isoDate(a);
+      if(horaEntrada && fechaIso) actual.sesiones.push({ fechaIso, horaEntrada, horaSalida, horas });
+    }
+  });
+  return bloques;
+}
+/* Agrupa las sesiones de un técnico por día: si hubo más de un fichaje el mismo día (turno
+   partido), suma las horas trabajadas y se queda con la entrada más temprana y la salida más
+   tardía como referencia visual. Los turnos que cruzan medianoche (salida "menor" que la
+   entrada) se tratan añadiendo 24h a la salida solo para poder comparar, sin alterar lo guardado. */
+function agruparSesionesPorDia(sesiones){
+  const porDia = {};
+  sesiones.forEach(s=>{
+    const entradaMin = horaHoldedAMinutos(s.horaEntrada);
+    let salidaMin = horaHoldedAMinutos(s.horaSalida);
+    if(entradaMin==null) return;
+    if(salidaMin!=null && salidaMin<=entradaMin) salidaMin += 1440;
+    if(!porDia[s.fechaIso]) porDia[s.fechaIso] = { horas:0, entradaMin:Infinity, salidaMin:-Infinity };
+    const dia = porDia[s.fechaIso];
+    dia.horas += s.horas;
+    if(entradaMin < dia.entradaMin) dia.entradaMin = entradaMin;
+    if(salidaMin!=null && salidaMin > dia.salidaMin) dia.salidaMin = salidaMin;
+  });
+  const resultado = {};
+  Object.entries(porDia).forEach(([fecha, d])=>{
+    resultado[fecha] = {
+      horas: Math.round(d.horas*100)/100,
+      entrada: d.entradaMin!==Infinity ? minutosAHora(d.entradaMin%1440) : "",
+      salida: d.salidaMin!==-Infinity ? minutosAHora(d.salidaMin%1440) : ""
+    };
+  });
+  return resultado;
+}
+/* Busca a qué técnico de la app corresponde un nombre de Holded: primero mira si ya hay un
+   emparejamiento guardado de una importación anterior (incluido si se marcó explícitamente para
+   ignorar); si no, intenta emparejar automáticamente por nombre de pila + algún apellido en común. */
+function emparejarNombreHolded(nombreHolded){
+  const clave = claveHoldedSegura(nombreHolded);
+  const guardado = STATE.holdedEmparejamientos[clave];
+  if(guardado) return guardado.tid || null; // tid es null si se marcó como "ignorar"
+  const palabras = normalizarNombreHolded(nombreHolded).split(" ");
+  const nombrePila = palabras[0];
+  for(const [tid, t] of Object.entries(STATE.tecnicos)){
+    const palabrasApp = normalizarNombreHolded(t.nombre).split(" ");
+    if(palabrasApp[0]===nombrePila && palabras.slice(1).some(p=>p && palabrasApp.includes(p))){
+      return tid;
+    }
+  }
+  return null;
+}
+function claveHoldedSegura(nombreHolded){
+  return normalizarNombreHolded(nombreHolded).replace(/[.#$\[\]\/\s]/g,"_");
+}
 function notaLibranzaCompensatoria(eventId){
   const evento = STATE.eventos[eventId];
   const fechaTxt = evento ? fmtFecha(evento.start) : "";
@@ -2270,6 +2375,8 @@ onValue(ref(db,"avisosCambios"), (snap)=>{ STATE.avisosCambios = snap.val() || {
 onValue(ref(db,"notasTecnico"), (snap)=>{ STATE.notasTecnico = snap.val() || {}; render(); });
 onValue(ref(db,"reglasRequisitos"), (snap)=>{ STATE.reglasRequisitos = snap.val() || {}; primerSnapshotReglas = true; render(); });
 onValue(ref(db,"libranzasCanceladas"), (snap)=>{ STATE.libranzasCanceladas = snap.val() || {}; render(); });
+onValue(ref(db,"fichajesHolded"), (snap)=>{ STATE.fichajesHolded = snap.val() || {}; render(); });
+onValue(ref(db,"holdedEmparejamientos"), (snap)=>{ STATE.holdedEmparejamientos = snap.val() || {}; render(); });
 onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; renderSubmenuCalendarios(); render(); });
 
 /* ---------- TABS ---------- */
@@ -2664,6 +2771,100 @@ document.getElementById("btnSyncDesdeAgosto").addEventListener("click", ()=>{
   const primeroDeAgosto = new Date(hoy.getFullYear(), 7, 1); // mes 7 = agosto (0-indexado)
   sincronizarTodosLosCalendarios("manual", primeroDeAgosto);
 });
+
+/* ---------- CONTROL HORARIO (HOLDED): procesar Excel, revisar emparejamientos, guardar ---------- */
+let holdedDatosEnRevision = null; // { [nombreHolded]: { porDia, tidSugerido } }, a la espera de confirmación
+document.getElementById("btnProcesarHolded").addEventListener("click", async ()=>{
+  const input = document.getElementById("inputHoldedExcel");
+  const statusEl = document.getElementById("holdedProcesarStatus");
+  const file = input.files[0];
+  if(!file) return toast("Elige primero el archivo Excel");
+  statusEl.textContent = "Leyendo el archivo…";
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:"array", cellDates:true });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, raw:true });
+    const bloques = parsearFilasHolded(rows);
+    if(bloques.length===0){
+      statusEl.textContent = "";
+      return toast("No se ha reconocido ningún técnico en ese archivo — comprueba que es el informe de horas trabajadas de Holded.");
+    }
+    holdedDatosEnRevision = {};
+    bloques.forEach(({nombreHolded, sesiones})=>{
+      holdedDatosEnRevision[nombreHolded] = {
+        porDia: agruparSesionesPorDia(sesiones),
+        tidSugerido: emparejarNombreHolded(nombreHolded)
+      };
+    });
+    statusEl.textContent = "";
+    input.value = "";
+    renderHoldedRevision();
+    document.getElementById("holdedRevisionCard").classList.remove("hidden");
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "";
+    toast("No se pudo leer el archivo: " + err.message);
+  }
+});
+
+function renderHoldedRevision(){
+  const cont = document.getElementById("holdedRevision");
+  const opcionesTecnicos = `<option value="">— No importar —</option>` +
+    Object.entries(STATE.tecnicos).map(([tid,t])=>`<option value="${tid}">${t.nombre}</option>`).join("");
+
+  cont.innerHTML = `
+    <h3 style="margin:0 0 6px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:17px;">Revisar antes de guardar</h3>
+    <p class="muted" style="margin-top:0;">Comprueba que cada nombre del Excel se ha emparejado con el técnico correcto de la app. Puedes cambiarlo, o elegir "No importar" para descartar a alguien (por ejemplo, alguien que ya no trabaja con vosotros).</p>
+    <div style="max-height:50vh;overflow-y:auto;">
+      ${Object.entries(holdedDatosEnRevision).map(([nombreHolded, datos])=>{
+        const dias = Object.keys(datos.porDia).length;
+        const claveInput = claveHoldedSegura(nombreHolded);
+        return `<div class="event-row">
+          <div style="flex:1;">
+            <strong>${nombreHolded}</strong><br>
+            <span class="muted">${dias} día${dias!==1?"s":""} de fichaje en este archivo</span>
+          </div>
+          <select data-holded-tid="${claveInput}" data-nombre-holded="${encodeURIComponent(nombreHolded)}">${opcionesTecnicos}</select>
+        </div>`;
+      }).join("")}
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn btn-outline" id="btnHoldedCancelar">Cancelar</button>
+      <button class="btn btn-amber" id="btnHoldedConfirmar">Guardar importación</button>
+    </div>
+  `;
+  // Preseleccionar la sugerencia automática (o el emparejamiento ya recordado) en cada desplegable
+  cont.querySelectorAll("[data-holded-tid]").forEach(sel=>{
+    const nombreHolded = decodeURIComponent(sel.dataset.nombreHolded);
+    sel.value = holdedDatosEnRevision[nombreHolded].tidSugerido || "";
+  });
+
+  document.getElementById("btnHoldedCancelar").addEventListener("click", ()=>{
+    holdedDatosEnRevision = null;
+    document.getElementById("holdedRevisionCard").classList.add("hidden");
+  });
+  document.getElementById("btnHoldedConfirmar").addEventListener("click", async ()=>{
+    const updates = {};
+    let diasGuardados = 0;
+    cont.querySelectorAll("[data-holded-tid]").forEach(sel=>{
+      const nombreHolded = decodeURIComponent(sel.dataset.nombreHolded);
+      const tid = sel.value || null;
+      const clave = claveHoldedSegura(nombreHolded);
+      // Recordamos el emparejamiento (o el "no importar", con tid null) para la próxima subida.
+      updates[`holdedEmparejamientos/${clave}`] = { nombreHolded, tid };
+      if(tid){
+        Object.entries(holdedDatosEnRevision[nombreHolded].porDia).forEach(([fecha, datosDia])=>{
+          updates[`fichajesHolded/${tid}/${fecha}`] = datosDia;
+          diasGuardados++;
+        });
+      }
+    });
+    await update(ref(db), updates);
+    holdedDatosEnRevision = null;
+    document.getElementById("holdedRevisionCard").classList.add("hidden");
+    toast(`${diasGuardados} día${diasGuardados!==1?"s":""} de fichaje importado${diasGuardados!==1?"s":""}`);
+  });
+}
 
 /* ---------- Pantalla dividida (dos paneles independientes de la propia app, vía iframes) ---------- */
 function actualizarFrameSplit(letra){
@@ -4701,6 +4902,14 @@ function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
    según su hora real (mismo rango 06:00–02:00 que ya usa la mini línea de tiempo). */
 /* Convierte los segmentos de un día en tarjetas apiladas, en orden cronológico, con la hora
    bien visible y una mini línea de tiempo proporcional (igual que las tarjetas de siempre). */
+/* Línea con lo realmente fichado en Holded ese día (si se ha importado), para comparar contra la
+   citación planificada que ya muestran las tarjetas de arriba. */
+function fichajeHoldedHTML(tecnicoId, fechaIso){
+  const datos = STATE.fichajesHolded[tecnicoId]?.[fechaIso];
+  if(!datos) return "";
+  const rango = (datos.entrada && datos.salida) ? `${datos.entrada} → ${datos.salida}` : "";
+  return `<div class="fichaje-holded">📋 Fichado${rango?` ${rango}`:""} · ${fmtHoras(datos.horas)}</div>`;
+}
 function segmentosATarjetasHTML(segmentos){
   if(segmentos.length===0) return "";
   return segmentos.map(seg=>{
@@ -4755,7 +4964,7 @@ function renderTecnicoSemana(tecnicoId, grid){
     return;
   }
 
-  let totalSemana = 0;
+  let totalSemana = 0, totalFichadoSemana = 0;
   let html = `<div class="week-nav">
       <button class="btn btn-ghost" data-tec-week-nav="-1">‹ Semana anterior</button>
       <div class="week-range">${fmtWeekRange(weekStart)}</div>
@@ -4767,11 +4976,12 @@ function renderTecnicoSemana(tecnicoId, grid){
     const segmentos = calcularSegmentosDia(tecnicoId, fechaIso);
     const horasDia = horasDiaTecnico(tecnicoId, fechaIso);
     totalSemana += horasDia;
+    totalFichadoSemana += STATE.fichajesHolded[tecnicoId]?.[fechaIso]?.horas || 0;
     const diaSemanaTxt = ["L","M","X","J","V","S","D"][(d.getDay()+6)%7];
-    html += `<div class="day-cell ${isAdmin?'day-cell-editable':''}" style="min-height:110px;" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num"><span class="day-num-dow">${diaSemanaTxt}</span> ${d.getDate()}</div>${segmentosATarjetasHTML(segmentos)}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
+    html += `<div class="day-cell ${isAdmin?'day-cell-editable':''}" style="min-height:110px;" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num"><span class="day-num-dow">${diaSemanaTxt}</span> ${d.getDate()}</div>${segmentosATarjetasHTML(segmentos)}${fichajeHoldedHTML(tecnicoId, fechaIso)}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
   });
   const maxSemana = horasMaximasTecnico(nombreTecnico, weekStart, weekEnd);
-  html += `</div>` + footerTotalHTML("Total semana", totalSemana, maxSemana);
+  html += `</div>` + footerTotalHTML("Total semana", totalSemana, maxSemana) + (totalFichadoSemana>0?`<p class="muted" style="text-align:right;margin:2px 0 0;font-size:12px;">📋 Fichado en Holded esta semana: <strong>${fmtHoras(totalFichadoSemana)}</strong></p>`:"");
   grid.innerHTML = html;
 
   grid.querySelectorAll("[data-tec-week-nav]").forEach(btn=>{
@@ -4810,7 +5020,7 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
   }
   if(semanaActual.length){ while(semanaActual.length<7) semanaActual.push(null); semanas.push(semanaActual); }
 
-  let totalMes = 0;
+  let totalMes = 0, totalFichadoMes = 0;
   let html = `<div class="tecnico-mes-scroll"><div class="month-grid tecnico-mes-grid" style="margin-bottom:4px;">`;
   ["L","M","X","J","V","S","D"].forEach(d=> html += `<div class="weekday-label">${d}</div>`);
   html += `<div class="weekday-label">Total</div></div>`;
@@ -4832,7 +5042,8 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
       const segmentos = calcularSegmentosDia(tecnicoId, fechaIso);
       const horasDia = horasDiaTecnico(tecnicoId, fechaIso);
       totalSemana += horasDia;
-      html += `<div class="day-cell ${isAdmin?'day-cell-editable':''}" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num">${day}</div>${segmentosATarjetasHTML(segmentos)}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
+      totalFichadoMes += STATE.fichajesHolded[tecnicoId]?.[fechaIso]?.horas || 0;
+      html += `<div class="day-cell ${isAdmin?'day-cell-editable':''}" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num">${day}</div>${segmentosATarjetasHTML(segmentos)}${fichajeHoldedHTML(tecnicoId, fechaIso)}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
     });
     totalMes += totalSemana;
     const maxSemanaFila = primerDiaReal ? horasMaximasTecnico(nombreTecnico, primerDiaReal, ultimoDiaReal) : 0;
@@ -4844,7 +5055,7 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
   const inicioMes = new Date(year, month-1, 1);
   const finMes = new Date(year, month-1, diasEnMes);
   const maxMes = horasMaximasTecnico(nombreTecnico, inicioMes, finMes);
-  html += footerTotalHTML("Total del mes", totalMes, maxMes);
+  html += footerTotalHTML("Total del mes", totalMes, maxMes) + (totalFichadoMes>0?`<p class="muted" style="text-align:right;margin:2px 0 0;font-size:12px;">📋 Fichado en Holded este mes: <strong>${fmtHoras(totalFichadoMes)}</strong></p>`:"");
   grid.innerHTML = html;
   grid.querySelectorAll("[data-ver-evento]").forEach(card=>{
     card.addEventListener("click", (e)=>{
@@ -4960,6 +5171,12 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
         </tr>`;
       }
     });
+
+    const fichaje = STATE.fichajesHolded[tecnicoId]?.[fechaIso];
+    if(fichaje){
+      const rango = (fichaje.entrada && fichaje.salida) ? `${fichaje.entrada} → ${fichaje.salida} · ` : "";
+      filas += `<tr><td colspan="2"></td><td colspan="9" style="text-align:left;font-size:10px;color:var(--amber);font-weight:600;">📋 Fichado en Holded: ${rango}${fmtHoras(fichaje.horas)}</td></tr>`;
+    }
 
     cerrarSemanaSiToca(diaDate, day===diasEnMes);
   }
