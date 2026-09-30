@@ -5026,7 +5026,7 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
   html += `<div class="weekday-label">Total</div></div>`;
 
   semanas.forEach(semana=>{
-    let totalSemana = 0;
+    let totalSemana = 0, totalFichadoSemanaFila = 0;
     let primerDiaReal = null, ultimoDiaReal = null;
     html += `<div class="month-grid tecnico-mes-grid" style="margin-bottom:4px;">`;
     semana.forEach(day=>{
@@ -5042,13 +5042,15 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
       const segmentos = calcularSegmentosDia(tecnicoId, fechaIso);
       const horasDia = horasDiaTecnico(tecnicoId, fechaIso);
       totalSemana += horasDia;
-      totalFichadoMes += STATE.fichajesHolded[tecnicoId]?.[fechaIso]?.horas || 0;
+      const fichadoDia = STATE.fichajesHolded[tecnicoId]?.[fechaIso]?.horas || 0;
+      totalFichadoSemanaFila += fichadoDia;
+      totalFichadoMes += fichadoDia;
       html += `<div class="day-cell ${isAdmin?'day-cell-editable':''}" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num">${day}</div>${segmentosATarjetasHTML(segmentos)}${fichajeHoldedHTML(tecnicoId, fechaIso)}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
     });
     totalMes += totalSemana;
     const maxSemanaFila = primerDiaReal ? horasMaximasTecnico(nombreTecnico, primerDiaReal, ultimoDiaReal) : 0;
     const excedeFila = maxSemanaFila>0 && totalSemana > maxSemanaFila + 0.01;
-    html += `<div class="week-total-cell ${excedeFila?'excede':''}">${totalSemana>0?fmtHoras(totalSemana):"—"}${maxSemanaFila>0?`<span class="week-total-max">/ ${fmtHoras(maxSemanaFila)}</span>`:""}</div>`;
+    html += `<div class="week-total-cell ${excedeFila?'excede':''}">${totalSemana>0?fmtHoras(totalSemana):"—"}${maxSemanaFila>0?`<span class="week-total-max">/ ${fmtHoras(maxSemanaFila)}</span>`:""}${totalFichadoSemanaFila>0?`<div class="fichaje-holded" style="margin-top:3px;">📋 ${fmtHoras(totalFichadoSemanaFila)}</div>`:""}</div>`;
     html += `</div>`;
   });
   html += `</div>`;
