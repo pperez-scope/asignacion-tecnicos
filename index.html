@@ -4905,6 +4905,7 @@ function calcularSegmentosDia(tecnicoId, fechaIso, omitirCalculoDescanso){
 /* Línea con lo realmente fichado en Holded ese día (si se ha importado), para comparar contra la
    citación planificada que ya muestran las tarjetas de arriba. */
 function fichajeHoldedHTML(tecnicoId, fechaIso){
+  if(!isAdmin) return "";
   const datos = STATE.fichajesHolded[tecnicoId]?.[fechaIso];
   if(!datos) return "";
   const rango = (datos.entrada && datos.salida) ? `${datos.entrada} → ${datos.salida}` : "";
@@ -4981,7 +4982,7 @@ function renderTecnicoSemana(tecnicoId, grid){
     html += `<div class="day-cell ${isAdmin?'day-cell-editable':''}" style="min-height:110px;" ${isAdmin?`data-editar-dia="${fechaIso}"`:""}><div class="day-num"><span class="day-num-dow">${diaSemanaTxt}</span> ${d.getDate()}</div>${segmentosATarjetasHTML(segmentos)}${fichajeHoldedHTML(tecnicoId, fechaIso)}${horasDia>0?`<div class="day-total-horas">${fmtHoras(horasDia)}</div>`:""}</div>`;
   });
   const maxSemana = horasMaximasTecnico(nombreTecnico, weekStart, weekEnd);
-  html += `</div>` + footerTotalHTML("Total semana", totalSemana, maxSemana) + (totalFichadoSemana>0?`<p class="muted" style="text-align:right;margin:2px 0 0;font-size:12px;">📋 Fichado en Holded esta semana: <strong>${fmtHoras(totalFichadoSemana)}</strong></p>`:"");
+  html += `</div>` + footerTotalHTML("Total semana", totalSemana, maxSemana) + (isAdmin && totalFichadoSemana>0?`<p class="muted" style="text-align:right;margin:2px 0 0;font-size:12px;">📋 Fichado en Holded esta semana: <strong>${fmtHoras(totalFichadoSemana)}</strong></p>`:"");
   grid.innerHTML = html;
 
   grid.querySelectorAll("[data-tec-week-nav]").forEach(btn=>{
@@ -5050,14 +5051,14 @@ function renderTecnicoMes(tecnicoId, mesValue, grid){
     totalMes += totalSemana;
     const maxSemanaFila = primerDiaReal ? horasMaximasTecnico(nombreTecnico, primerDiaReal, ultimoDiaReal) : 0;
     const excedeFila = maxSemanaFila>0 && totalSemana > maxSemanaFila + 0.01;
-    html += `<div class="week-total-cell ${excedeFila?'excede':''}">${totalSemana>0?fmtHoras(totalSemana):"—"}${maxSemanaFila>0?`<span class="week-total-max">/ ${fmtHoras(maxSemanaFila)}</span>`:""}${totalFichadoSemanaFila>0?`<div class="fichaje-holded" style="margin-top:3px;">📋 ${fmtHoras(totalFichadoSemanaFila)}</div>`:""}</div>`;
+    html += `<div class="week-total-cell ${excedeFila?'excede':''}">${totalSemana>0?fmtHoras(totalSemana):"—"}${maxSemanaFila>0?`<span class="week-total-max">/ ${fmtHoras(maxSemanaFila)}</span>`:""}${isAdmin && totalFichadoSemanaFila>0?`<div class="fichaje-holded" style="margin-top:3px;">📋 ${fmtHoras(totalFichadoSemanaFila)}</div>`:""}</div>`;
     html += `</div>`;
   });
   html += `</div>`;
   const inicioMes = new Date(year, month-1, 1);
   const finMes = new Date(year, month-1, diasEnMes);
   const maxMes = horasMaximasTecnico(nombreTecnico, inicioMes, finMes);
-  html += footerTotalHTML("Total del mes", totalMes, maxMes) + (totalFichadoMes>0?`<p class="muted" style="text-align:right;margin:2px 0 0;font-size:12px;">📋 Fichado en Holded este mes: <strong>${fmtHoras(totalFichadoMes)}</strong></p>`:"");
+  html += footerTotalHTML("Total del mes", totalMes, maxMes) + (isAdmin && totalFichadoMes>0?`<p class="muted" style="text-align:right;margin:2px 0 0;font-size:12px;">📋 Fichado en Holded este mes: <strong>${fmtHoras(totalFichadoMes)}</strong></p>`:"");
   grid.innerHTML = html;
   grid.querySelectorAll("[data-ver-evento]").forEach(card=>{
     card.addEventListener("click", (e)=>{
@@ -5174,7 +5175,7 @@ function renderTecnicoLista(tecnicoId, mesValue, grid){
       }
     });
 
-    const fichaje = STATE.fichajesHolded[tecnicoId]?.[fechaIso];
+    const fichaje = isAdmin ? STATE.fichajesHolded[tecnicoId]?.[fechaIso] : null;
     if(fichaje){
       const rango = (fichaje.entrada && fichaje.salida) ? `${fichaje.entrada} → ${fichaje.salida} · ` : "";
       filas += `<tr><td colspan="2"></td><td colspan="9" style="text-align:left;font-size:10px;color:var(--amber);font-weight:600;">📋 Fichado en Holded: ${rango}${fmtHoras(fichaje.horas)}</td></tr>`;
