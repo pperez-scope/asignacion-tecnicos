@@ -1633,35 +1633,58 @@ function horaHoldedAMinutos(str){
   if(!m) return null;
   return parseInt(m[1],10)*60 + parseInt(m[2],10);
 }
-/* Convierte "08:07 h." (tal como lo exporta Holded) a horas decimales (8.1166...). */
-function duracionHoldedAHoras(str){
-  const m = (str||"").toString().trim().match(/^(\d+):(\d{2})/);
+/* Convierte una duración de Holded a horas decimales (8.1166...). Holded ha exportado esta
+   columna de dos formas distintas según el mes: como texto ("08:07 h." o "5:50:00") o como
+   número crudo de Excel (fracción de día, p. ej. 0.2430555...) cuando la celda viene con
+   formato de duración numérica en vez de texto. Aceptamos ambas. */
+function duracionHoldedAHoras(val){
+  if(typeof val === "number" && isFinite(val)) return val*24;
+  const m = (val||"").toString().trim().match(/^(\d+):(\d{2})/);
   if(!m) return 0;
   return parseInt(m[1],10) + parseInt(m[2],10)/60;
 }
+/* Convierte el valor crudo de la columna "fecha" de una fila de sesión de Holded a fecha ISO
+   (yyyy-mm-dd), o null si no es una fecha reconocible. Igual que con la duración, Holded ha
+   exportado esta columna de formas distintas según el mes: como objeto Date (cuando la celda
+   tiene formato de fecha real), como número crudo de Excel (fracha serial), o como texto
+   "dd/mm/yyyy" (cuando la celda viene como texto plano). Aceptamos las tres. */
+function fechaHoldedAIso(a){
+  if(a instanceof Date) return isoDate(a);
+  if(typeof a === "number" && isFinite(a)){
+    const d = XLSX.SSF.parse_date_code(a);
+    if(!d || !d.y || !d.m || !d.d) return null;
+    return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;
+  }
+  if(typeof a === "string"){
+    const m = a.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(m) return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  }
+  return null;
+}
 /* Recorre las filas crudas del Excel de Holded (una hoja, un bloque por técnico) y devuelve un
    array de { nombreHolded, sesiones:[{fechaIso, horaEntrada, horaSalida, horas}] }. Una fila de
-   cabecera de técnico se reconoce porque la columna A es texto y contiene " - ID "; el resto de
-   filas de ese bloque son sesiones (columna A = fecha) hasta la fila "Total" o el siguiente
-   técnico. Las filas vacías y de total se ignoran solas, al no cumplir ninguna de esas dos
-   condiciones. */
+   cabecera de técnico se reconoce porque la columna A es texto y contiene " - ID " o " - DNI "
+   (Holded ha usado ambas etiquetas según el mes); el resto de filas de ese bloque son sesiones
+   (columna A = fecha, ver fechaHoldedAIso) hasta la fila "Total" o el siguiente técnico. Las
+   filas vacías y de total se ignoran solas, al no cumplir ninguna de esas dos condiciones. */
 function parsearFilasHolded(rows){
   const bloques = [];
   let actual = null;
+  const RE_CABECERA = /\s-\s(?:ID|DNI)\s/;
   rows.forEach(row=>{
     const a = row[0];
-    if(typeof a === "string" && a.includes(" - ID ")){
-      actual = { nombreHolded: a.split(" - ID ")[0].trim(), sesiones: [] };
+    if(typeof a === "string" && RE_CABECERA.test(a)){
+      actual = { nombreHolded: a.split(RE_CABECERA)[0].trim(), sesiones: [] };
       bloques.push(actual);
       return;
     }
     if(!actual) return;
-    if(a instanceof Date){
+    const fechaIso = fechaHoldedAIso(a);
+    if(fechaIso){
       const horaEntrada = (row[1]||"").toString().trim();
       const horaSalida = (row[3]||"").toString().trim();
       const horas = duracionHoldedAHoras(row[5]);
-      const fechaIso = isoDate(a);
-      if(horaEntrada && fechaIso) actual.sesiones.push({ fechaIso, horaEntrada, horaSalida, horas });
+      if(horaEntrada) actual.sesiones.push({ fechaIso, horaEntrada, horaSalida, horas });
     }
   });
   return bloques;
@@ -2782,7 +2805,11 @@ document.getElementById("btnProcesarHolded").addEventListener("click", async ()=
   statusEl.textContent = "Leyendo el archivo…";
   try{
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type:"array", cellDates:true });
+    // Sin cellDates: así las celdas numéricas (fecha u horas de duración) llegan como el número
+    // crudo de Excel y las convertimos nosotros (ver fechaHoldedAIso/duracionHoldedAHoras), que
+    // es más fiable que dejar que XLSX las "fechifique" — con archivos de algunos meses eso
+    // corrompía las columnas de duración numérica.
+    const wb = XLSX.read(buf, { type:"array" });
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, raw:true });
     const bloques = parsearFilasHolded(rows);
     if(bloques.length===0){
