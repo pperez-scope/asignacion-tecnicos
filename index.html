@@ -535,6 +535,9 @@
   }
   .event-row:last-child{border-bottom:none;}
   .event-row > div:not(.event-fecha){min-width:0;overflow-wrap:break-word;word-break:break-word;}
+  .holded-rev-row{padding:12px 0;border-bottom:1px solid var(--line);}
+  .holded-rev-row:last-child{border-bottom:none;}
+  .holded-rev-row select{width:100%;margin-top:8px;padding:8px 9px;font-size:14px;}
   .event-fecha{
     font-family:var(--font-display);
     font-size:13px;
@@ -2846,8 +2849,8 @@ function renderHoldedRevision(){
       ${Object.entries(holdedDatosEnRevision).map(([nombreHolded, datos])=>{
         const dias = Object.keys(datos.porDia).length;
         const claveInput = claveHoldedSegura(nombreHolded);
-        return `<div class="event-row">
-          <div style="flex:1;">
+        return `<div class="holded-rev-row">
+          <div>
             <strong>${nombreHolded}</strong><br>
             <span class="muted">${dias} día${dias!==1?"s":""} de fichaje en este archivo</span>
           </div>
