@@ -1155,6 +1155,15 @@
           <p class="muted" id="holdedProcesarStatus"></p>
         </div>
         <div class="card">
+          <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Vacaciones <span id="vacacionesAnioLabel"></span></h3>
+          <p class="muted" style="margin-top:0;">Se descuentan solas según los días de "Vacaciones" que asignes en Otras asignaciones (solo cuentan días laborables, sin fines de semana ni festivos). Puedes ajustar los días base y los arrastrados de cada técnico.</p>
+          <div class="row row-compact" style="align-items:center;">
+            <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnVacAnioAnterior">‹</button>
+            <button class="btn btn-outline" style="color:var(--ink);border-color:var(--line);" id="btnVacAnioSiguiente">›</button>
+          </div>
+          <div id="vacacionesAdminList"></div>
+        </div>
+        <div class="card">
           <h3 style="margin:0 0 8px;color:var(--navy);font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;font-size:16px;">Notas sobre técnicos</h3>
           <p class="muted" style="margin-top:0;">Apunta aquí circunstancias puntuales de un técnico con fecha (por ejemplo, "del 4 al 8 de octubre prefiere turnos de mañana"). La nota aparecerá sola, destacada, al asignar ese técnico a un evento en esas fechas o al consultar su Vista técnico esa semana — no hace falta que te acuerdes de mirarlo.</p>
           <div class="row row-compact">
@@ -1439,6 +1448,80 @@ function diasLaborablesEnRango(inicio, fin){
   }
   return count;
 }
+/* ---------- CONTEO DE VACACIONES (solo administrador) ---------- */
+const VACACIONES_DIAS_BASE = 22;
+/* Resumen de vacaciones de un técnico en un año natural. Cuenta solo días laborables (L-V sin
+   festivos) con tipo "vacaciones" en ausencias; hasta hoy = disfrutados, después = planificados.
+   Ajustes por técnico y año en vacacionesAjustes/{año}/{tid} = { base, arrastrados }. */
+function resumenVacaciones(tecnicoId, anio){
+  const aj = STATE.vacacionesAjustes?.[anio]?.[tecnicoId] || {};
+  const base = Number.isFinite(aj.base) ? aj.base : VACACIONES_DIAS_BASE;
+  const arrastrados = Number.isFinite(aj.arrastrados) ? aj.arrastrados : 0;
+  const hoyIso = isoDate(new Date());
+  let disfrutados = 0, planificados = 0;
+  Object.entries(STATE.ausencias[tecnicoId] || {}).forEach(([fecha, a])=>{
+    if(a?.tipo!=="vacaciones" || !fecha.startsWith(`${anio}-`)) return;
+    if(!esDiaLaborable(parseIsoLocal(fecha))) return;
+    if(fecha <= hoyIso) disfrutados++; else planificados++;
+  });
+  const total = base + arrastrados;
+  return { base, arrastrados, total, disfrutados, planificados, restantes: total - disfrutados - planificados };
+}
+function fmtDiasVac(n){ return (Math.round(n*100)/100).toString().replace(".",","); }
+function chipVacacionesHTML(tecnicoId){
+  if(!isAdmin) return "";
+  const anio = new Date().getFullYear();
+  const r = resumenVacaciones(tecnicoId, anio);
+  const color = r.restantes<0 ? "#B3261E" : "var(--navy)";
+  return `<div class="card" style="padding:8px 12px;"><span style="font-weight:700;color:${color};">🏖️ Vacaciones ${anio}: quedan ${fmtDiasVac(r.restantes)} de ${fmtDiasVac(r.total)}</span>
+    <span class="muted"> · ${fmtDiasVac(r.disfrutados)} disfrutados · ${fmtDiasVac(r.planificados)} planificados${r.arrastrados?` · incluye ${fmtDiasVac(r.arrastrados)} arrastrados`:""}</span></div>`;
+}
+let vacacionesAnioAdmin = new Date().getFullYear();
+function renderVacacionesAdmin(){
+  const cont = document.getElementById("vacacionesAdminList");
+  if(!cont) return;
+  if(cont.contains(document.activeElement) && document.activeElement.tagName==="INPUT") return; // no pisar lo que se está escribiendo
+  const anio = vacacionesAnioAdmin;
+  document.getElementById("vacacionesAnioLabel").textContent = anio;
+  const filas = Object.entries(STATE.tecnicos).sort((a,b)=> a[1].nombre.localeCompare(b[1].nombre)).map(([tid,t])=>{
+    const r = resumenVacaciones(tid, anio);
+    const pct = r.total>0 ? Math.min(100, Math.round((r.disfrutados+r.planificados)/r.total*100)) : 0;
+    const colorBarra = r.restantes<0 ? "#B3261E" : "var(--teal)";
+    return `<tr>
+      <td style="padding:6px 6px 6px 0;">${t.nombre}<div style="height:5px;background:var(--line);border-radius:3px;margin-top:3px;"><div style="height:5px;width:${pct}%;background:${colorBarra};border-radius:3px;"></div></div></td>
+      <td><input type="number" step="0.5" min="0" value="${r.base}" data-vac-tid="${tid}" data-vac-campo="base" style="width:58px;padding:4px;"></td>
+      <td><input type="number" step="0.5" min="0" value="${r.arrastrados}" data-vac-tid="${tid}" data-vac-campo="arrastrados" style="width:58px;padding:4px;"></td>
+      <td style="text-align:center;">${fmtDiasVac(r.disfrutados)}</td>
+      <td style="text-align:center;">${fmtDiasVac(r.planificados)}</td>
+      <td style="text-align:center;font-weight:700;color:${r.restantes<0?"#B3261E":"inherit"};">${fmtDiasVac(r.restantes)}</td>
+    </tr>`;
+  }).join("");
+  cont.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="text-align:left;"><th>Técnico</th><th>Base</th><th>Arrastr.</th><th style="text-align:center;">Disfr.</th><th style="text-align:center;">Plan.</th><th style="text-align:center;">Quedan</th></tr></thead>
+    <tbody>${filas}</tbody></table></div>`;
+  cont.querySelectorAll("[data-vac-tid]").forEach(inp=>{
+    inp.addEventListener("change", async ()=>{
+      const v = parseFloat(inp.value.replace(",","."));
+      const valor = Number.isFinite(v) && v>=0 ? v : 0;
+      await set(ref(db, `vacacionesAjustes/${anio}/${inp.dataset.vacTid}/${inp.dataset.vacCampo}`), valor);
+    });
+  });
+}
+/* Aviso en vivo al marcar días de vacaciones en "Otras asignaciones": cuántos días laborables
+   consumirá la selección (sin contar los que ya eran vacaciones) y cuántos le quedarían. */
+function avisoVacacionesSeleccion(tecnicoId, fechas){
+  const nuevas = fechas.filter(f=> esDiaLaborable(parseIsoLocal(f)) && STATE.ausencias[tecnicoId]?.[f]?.tipo!=="vacaciones");
+  if(!fechas.length) return "";
+  if(!nuevas.length) return `<span class="muted">Ninguno de los días seleccionados consume vacaciones (fin de semana, festivo o ya marcados).</span>`;
+  const porAnio = {};
+  nuevas.forEach(f=>{ const a = f.slice(0,4); porAnio[a] = (porAnio[a]||0)+1; });
+  return Object.entries(porAnio).map(([a, n])=>{
+    const r = resumenVacaciones(tecnicoId, a);
+    const quedarian = r.restantes - n;
+    const color = quedarian<0 ? "#B3261E" : "var(--navy)";
+    return `<div style="color:${color};font-weight:600;">🏖️ ${a}: consumirá ${n} día${n!==1?"s":""} laborable${n!==1?"s":""}. Le quedarían ${fmtDiasVac(quedarian)} de ${fmtDiasVac(r.total)}${quedarian<0?" — se pasa del total":""}.</div>`;
+  }).join("");
+}
 /* Máximo de horas para un técnico en un rango de fechas, proporcional a los días laborables
    (calendario laboral de la Comunidad de Madrid) dentro de ese rango. */
 function horasMaximasTecnico(nombre, inicio, fin){
@@ -1578,7 +1661,7 @@ let currentUser = null;
 let accessToken = null;
 let isAdmin = false;
 
-let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{}, reglasRequisitos:{}, libranzasCanceladas:{}, fichajesHolded:{}, holdedEmparejamientos:{} };
+let STATE = { tecnicos:{}, eventos:{}, asignaciones:{}, ausencias:{}, configuracion:{}, avisosCambios:{}, notasTecnico:{}, reglasRequisitos:{}, libranzasCanceladas:{}, fichajesHolded:{}, holdedEmparejamientos:{}, vacacionesAjustes:{} };
 
 /* ---------- HELPERS ---------- */
 function slugify(str){
@@ -2408,6 +2491,7 @@ onValue(ref(db,"reglasRequisitos"), (snap)=>{ STATE.reglasRequisitos = snap.val(
 onValue(ref(db,"libranzasCanceladas"), (snap)=>{ STATE.libranzasCanceladas = snap.val() || {}; render(); });
 onValue(ref(db,"fichajesHolded"), (snap)=>{ STATE.fichajesHolded = snap.val() || {}; render(); });
 onValue(ref(db,"holdedEmparejamientos"), (snap)=>{ STATE.holdedEmparejamientos = snap.val() || {}; render(); });
+onValue(ref(db,"vacacionesAjustes"), (snap)=>{ STATE.vacacionesAjustes = snap.val() || {}; render(); });
 onValue(ref(db,"calendarios"), (snap)=>{ CALENDARIOS = snap.val() || {}; renderSubmenuCalendarios(); render(); });
 
 /* ---------- TABS ---------- */
@@ -2797,6 +2881,8 @@ function detenerAutoSync(){
 }
 
 document.getElementById("btnSync").addEventListener("click", ()=> sincronizarTodosLosCalendarios("manual"));
+document.getElementById("btnVacAnioAnterior").addEventListener("click", ()=>{ vacacionesAnioAdmin--; renderVacacionesAdmin(); });
+document.getElementById("btnVacAnioSiguiente").addEventListener("click", ()=>{ vacacionesAnioAdmin++; renderVacacionesAdmin(); });
 document.getElementById("btnSyncDesdeAgosto").addEventListener("click", ()=>{
   const hoy = new Date();
   const primeroDeAgosto = new Date(hoy.getFullYear(), 7, 1); // mes 7 = agosto (0-indexado)
@@ -3799,7 +3885,7 @@ function render(){
     else renderVistaGeneral();
   }
   if(activeTab==="ausencias") renderAusencias();
-  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); poblarSelectorInforme(); renderNotasTecnico(); renderReglasRequisitos(); }
+  if(activeTab==="admin"){ renderPublicacionSemanas(); renderCalendariosList(); poblarSelectorInforme(); renderNotasTecnico(); renderReglasRequisitos(); renderVacacionesAdmin(); }
 }
 
 let resizeCuadranteTimeout = null;
@@ -4674,11 +4760,11 @@ function renderVistaTecnico(){
     rangoHasta = `${mesTecnicoActual.getFullYear()}-${String(mesTecnicoActual.getMonth()+1).padStart(2,"0")}-${String(ultimoDia).padStart(2,"0")}`;
   }
   const notasVisibles = notasEnRango(tecnicoId, rangoDesde, rangoHasta);
-  bannerNotas.innerHTML = notasVisibles.length ? `
+  bannerNotas.innerHTML = chipVacacionesHTML(tecnicoId) + (notasVisibles.length ? `
     <div class="card" style="background:#FFF6E8;border-color:var(--amber);">
       ${notasVisibles.map(([,n])=>`<p style="margin:0;color:#7A4A00;font-weight:600;">📝 ${fmtFecha(n.fechaInicio)}${n.fechaFin!==n.fechaInicio?` – ${fmtFecha(n.fechaFin)}`:""}: ${n.texto}</p>`).join("")}
     </div>
-  ` : "";
+  ` : "");
 
   if(tecnicoModo === "semana") renderTecnicoSemana(tecnicoId, grid);
   else if(tecnicoModo === "lista") renderTecnicoLista(tecnicoId, mesValue, grid);
@@ -5770,6 +5856,7 @@ function renderAusencias(){
       <div class="field">
         <label>Días seleccionados</label>
         <div id="ausFechasChips" style="display:flex;flex-wrap:wrap;gap:6px;min-height:34px;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;"></div>
+        <div id="ausVacacionesAviso" style="margin-top:6px;font-size:13px;"></div>
       </div>
       <div class="row hidden" id="ausNotaRow">
         <div class="field">
@@ -5833,7 +5920,7 @@ function renderAusencias(){
       if(tipo==="oficina" && !lugarInput.value) lugarInput.value = "Scope";
       if(necesitaHorario) evaluarDescansoAuto();
     };
-    tipoSelect.addEventListener("change", actualizarCamposTipo);
+    tipoSelect.addEventListener("change", ()=>{ actualizarCamposTipo(); if(typeof renderChipsAusencia==="function") renderChipsAusencia(); });
     horarioInput.addEventListener("change", evaluarDescansoAuto);
     chkDescanso.addEventListener("change", ()=>{ minutosDescanso.disabled = !chkDescanso.checked; });
     actualizarCamposTipo();
@@ -5841,6 +5928,8 @@ function renderAusencias(){
     const renderChipsAusencia = ()=>{
       const cont = document.getElementById("ausFechasChips");
       if(!cont) return;
+      const avisoVac = document.getElementById("ausVacacionesAviso");
+      if(avisoVac) avisoVac.innerHTML = tipoSelect.value==="vacaciones" ? avisoVacacionesSeleccion(document.getElementById("ausTecnico").value, fechasSeleccionadasAusencia) : "";
       if(fechasSeleccionadasAusencia.length===0){
         cont.innerHTML = `<span class="muted" style="font-size:12px;">Todavía no has añadido ningún día.</span>`;
         return;
