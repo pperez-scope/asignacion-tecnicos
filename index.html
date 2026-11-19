@@ -1412,12 +1412,17 @@ function horasSemanalesTecnico(nombre){
   return HORAS_SEMANALES_ESPECIAL[nombre] ?? HORAS_SEMANALES_DEFECTO;
 }
 
-// Festivos autonómicos/nacionales de la Comunidad de Madrid (Decreto 75/2025) más los 2 festivos
-// locales de Madrid capital (San Isidro 15/mayo y Virgen de la Almudena 9/noviembre).
+// Festivos autonómicos/nacionales de la Comunidad de Madrid (2026: Decreto 75/2025; 2027: Decreto
+// 82/2026) más los 2 festivos locales de Madrid capital (San Isidro 15/mayo y Virgen de la
+// Almudena 9/noviembre). Además, por criterio de Scope, el 24 y el 31 de diciembre se tratan
+// como festivos.
 const FESTIVOS_MADRID = {
   2026: ["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02",
          "2026-05-15","2026-08-15","2026-10-12","2026-11-02","2026-11-09","2026-12-07",
-         "2026-12-08","2026-12-25"]
+         "2026-12-08","2026-12-24","2026-12-25","2026-12-31"],
+  2027: ["2027-01-01","2027-01-06","2027-03-19","2027-03-25","2027-03-26","2027-05-01",
+         "2027-05-15","2027-08-16","2027-10-12","2027-11-01","2027-11-09","2027-12-06",
+         "2027-12-08","2027-12-24","2027-12-25","2027-12-31"]
 };
 function esDiaLaborable(date){
   const dow = date.getDay(); // 0=domingo, 6=sábado
