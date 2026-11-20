@@ -1450,12 +1450,17 @@ function diasLaborablesEnRango(inicio, fin){
 }
 /* ---------- CONTEO DE VACACIONES (solo administrador) ---------- */
 const VACACIONES_DIAS_BASE = 22;
+/* Días base distintos de 22 en un año concreto (p. ej. incorporaciones a mitad de año). Solo se
+   usan si no hay un ajuste guardado desde Admin para ese técnico y año. */
+const VACACIONES_BASE_ESPECIAL = { 2026: { "Laura Rubio": 5 } };
 /* Resumen de vacaciones de un técnico en un año natural. Cuenta solo días laborables (L-V sin
    festivos) con tipo "vacaciones" en ausencias; hasta hoy = disfrutados, después = planificados.
    Ajustes por técnico y año en vacacionesAjustes/{año}/{tid} = { base, arrastrados }. */
 function resumenVacaciones(tecnicoId, anio){
   const aj = STATE.vacacionesAjustes?.[anio]?.[tecnicoId] || {};
-  const base = Number.isFinite(aj.base) ? aj.base : VACACIONES_DIAS_BASE;
+  const nombreTec = STATE.tecnicos?.[tecnicoId]?.nombre;
+  const baseEspecial = VACACIONES_BASE_ESPECIAL[anio]?.[nombreTec];
+  const base = Number.isFinite(aj.base) ? aj.base : (baseEspecial ?? VACACIONES_DIAS_BASE);
   const arrastrados = Number.isFinite(aj.arrastrados) ? aj.arrastrados : 0;
   const hoyIso = isoDate(new Date());
   let disfrutados = 0, planificados = 0;
@@ -1469,12 +1474,14 @@ function resumenVacaciones(tecnicoId, anio){
 }
 function fmtDiasVac(n){ return (Math.round(n*100)/100).toString().replace(".",","); }
 function chipVacacionesHTML(tecnicoId){
-  if(!isAdmin) return "";
   const anio = new Date().getFullYear();
   const r = resumenVacaciones(tecnicoId, anio);
   const color = r.restantes<0 ? "#B3261E" : "var(--navy)";
-  return `<div class="card" style="padding:8px 12px;"><span style="font-weight:700;color:${color};">🏖️ Vacaciones ${anio}: quedan ${fmtDiasVac(r.restantes)} de ${fmtDiasVac(r.total)}</span>
-    <span class="muted"> · ${fmtDiasVac(r.disfrutados)} disfrutados · ${fmtDiasVac(r.planificados)} planificados${r.arrastrados?` · incluye ${fmtDiasVac(r.arrastrados)} arrastrados`:""}</span></div>`;
+  const libranzas = obtenerLibranzasPendientes().filter(p=>p.tid===tecnicoId).length;
+  return `<div class="card" style="padding:8px 12px;">
+    <div><span style="font-weight:700;color:${color};">🏖️ Vacaciones ${anio}: quedan ${fmtDiasVac(r.restantes)} de ${fmtDiasVac(r.total)}</span>
+    <span class="muted"> · ${fmtDiasVac(r.disfrutados)} disfrutados · ${fmtDiasVac(r.planificados)} planificados${r.arrastrados?` · incluye ${fmtDiasVac(r.arrastrados)} arrastrados`:""}</span></div>
+    <div style="margin-top:3px;"><span style="font-weight:700;color:${libranzas>0?"#7A2E1D":"var(--navy)"};">🟢 Libranzas pendientes: ${libranzas}</span></div></div>`;
 }
 let vacacionesAnioAdmin = new Date().getFullYear();
 function renderVacacionesAdmin(){
